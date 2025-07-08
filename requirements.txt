@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+ldap3
+requests
+aiohttp
+pydantic
+pydantic-settings
+typing_extensions
+sqlalchemy
+pymysql
+apscheduler
+jinja2
