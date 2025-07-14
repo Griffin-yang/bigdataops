@@ -10,6 +10,7 @@ import AlertHistory from '@/views/AlertHistory.vue'
 import Monitoring from '@/views/Monitoring.vue'
 import ClusterOverview from '@/views/ClusterOverview.vue'
 import ClusterComponents from '@/views/ClusterComponents.vue'
+import BusinessMonitoring from '@/views/BusinessMonitoring.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -71,6 +72,12 @@ const router = createRouter({
           name: 'cluster-components',
           component: ClusterComponents,
           meta: { title: '组件监控' }
+        },
+        {
+          path: 'business-monitoring',
+          name: 'business-monitoring',
+          component: BusinessMonitoring,
+          meta: { title: '业务监控' }
         }
       ]
     }
@@ -80,11 +87,17 @@ const router = createRouter({
 // 路由守卫
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem(STORAGE_KEYS.TOKEN)
+  console.log(`🧭 路由导航: ${from.path} -> ${to.path}`)
+  console.log(`🔐 Token状态: ${token ? '已登录' : '未登录'}`)
+  
   if (to.path !== ROUTES.LOGIN && !token) {
+    console.log('❌ 未登录，重定向到登录页')
     next(ROUTES.LOGIN)
   } else if (to.path === ROUTES.LOGIN && token) {
+    console.log('✅ 已登录，重定向到首页')
     next(ROUTES.DASHBOARD)
   } else {
+    console.log('✅ 路由验证通过')
     next()
   }
 })

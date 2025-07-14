@@ -49,10 +49,14 @@ app.include_router(ldap_controller.router, prefix="/api", tags=["LDAP管理"])
 from app.cluster.controllers.cluster_controller import router as cluster_router
 app.include_router(cluster_router, prefix="/api", tags=["集群监控"])
 
+# 业务监控路由
+from app.business.controllers.business_controller import router as business_router
+app.include_router(business_router, prefix="/api", tags=["业务监控"])
+
 @app.get("/")
 async def root():
     return {"message": "BigDataOps API 运行正常"}
 
-@app.get("/health")
+@app.get("/api/health")
 async def health_check():
     return {"status": "healthy", "service": "BigDataOps"} 

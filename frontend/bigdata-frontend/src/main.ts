@@ -25,4 +25,11 @@ app.use(createPinia())
 app.use(router)
 app.use(ElementPlus)
 
+// 启动应用
+console.log('🚀 BigDataOps 前端应用正在启动...')
+console.log('📋 提示：如果页面空白，请按F12查看控制台错误')
+console.log('🔑 登录信息：用户名=admin，密码=admin')
+
 app.mount('#app')
+
+console.log('✅ BigDataOps 前端应用启动完成')

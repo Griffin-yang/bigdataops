@@ -71,6 +71,10 @@
               <el-icon><Setting /></el-icon>
               <template #title>组件监控</template>
             </el-menu-item>
+            <el-menu-item index="/business-monitoring">
+              <el-icon><DataBoard /></el-icon>
+              <template #title>业务监控</template>
+            </el-menu-item>
           </el-sub-menu>
         </el-menu>
       </el-aside>
@@ -175,7 +179,7 @@ const defaultOpeneds = computed(() => {
   if (path.startsWith('/alert-')) {
     openeds.push('alert-management')
   }
-  if (path.startsWith('/monitoring') || path.startsWith('/cluster/')) {
+  if (path.startsWith('/monitoring') || path.startsWith('/cluster/') || path.startsWith('/business-monitoring')) {
     openeds.push('cluster-monitoring')
   }
   
@@ -195,7 +199,8 @@ const breadcrumbItems = computed(() => {
     '/alert-history': { name: '告警历史', parent: 'alert-management', parentName: '告警管理' },
     '/monitoring': { name: '系统监控', parent: 'cluster-monitoring', parentName: '集群监控' },
     '/cluster/overview': { name: '集群总览', parent: 'cluster-monitoring', parentName: '集群监控' },
-    '/cluster/components': { name: '组件监控', parent: 'cluster-monitoring', parentName: '集群监控' }
+    '/cluster/components': { name: '组件监控', parent: 'cluster-monitoring', parentName: '集群监控' },
+    '/business-monitoring': { name: '业务监控', parent: 'cluster-monitoring', parentName: '集群监控' }
   }
   
   const current = routeMap[path]

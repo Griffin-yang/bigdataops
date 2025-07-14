@@ -93,7 +93,9 @@ export const ROUTES = {
   ALERT_RULES: '/alert-rules',
   ALERT_TEMPLATES: '/alert-templates',
   ALERT_HISTORY: '/alert-history',
-  MONITORING: '/monitoring'
+  MONITORING: '/monitoring',
+  CLUSTER_OVERVIEW: '/cluster/overview',
+  CLUSTER_COMPONENTS: '/cluster/components'
 } as const
 
 // 分页配置

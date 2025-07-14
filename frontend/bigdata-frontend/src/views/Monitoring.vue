@@ -1,391 +1,680 @@
 <template>
-  <div class="monitoring-container">
-    <!-- 集群概览 -->
-    <div class="page-header">
-      <h2>集群概览</h2>
-      <div style="float: right">
-        <el-button type="primary" @click="toClusterOverview" style="margin-right: 12px;">
-          <el-icon><Monitor /></el-icon>
-          集群监控
-        </el-button>
-        <el-button type="text" size="small" @click="refreshData">
-          <el-icon><Refresh /></el-icon>
-          刷新
-        </el-button>
-      </div>
-    </div>
-    
-    <div class="metrics-section">
-      <div class="metric-grid">
-        <div class="metric-item" v-for="metric in clusterMetrics" :key="metric.name">
-          <div class="metric-title">
-            <el-icon><component :is="metric.icon" /></el-icon>
-            <span>{{ metric.name }}</span>
+  <div class="monitoring-dashboard">
+    <!-- 仪表盘标题 -->
+    <div class="dashboard-header">
+      <div class="header-content">
+        <div class="header-left">
+          <h1>
+            <el-icon class="title-icon"><TrendCharts /></el-icon>
+            监控仪表盘
+          </h1>
+          <p>集群监控系统总览 - 实时掌握大数据平台运行状态</p>
+        </div>
+        <div class="header-actions">
+          <div class="status-info">
+            <el-tag :type="getSystemHealthType()" size="large" effect="dark">
+              <el-icon><component :is="getSystemHealthIcon()" /></el-icon>
+              {{ getSystemHealthText() }}
+            </el-tag>
           </div>
-          <div class="metric-value">{{ metric.value }}</div>
-          <div class="metric-description">实时监控数据</div>
+          <el-button 
+            @click="refreshAllData" 
+            :loading="loading" 
+            type="primary"
+            :icon="Refresh"
+            size="default"
+          >
+            {{ loading ? '刷新中...' : '全局刷新' }}
+          </el-button>
         </div>
       </div>
+      
+      <!-- 最后更新时间 -->
+      <div class="update-info">
+        <el-icon><Clock /></el-icon>
+        <span>最后更新: {{ formatTime(lastUpdateTime) }}</span>
+      </div>
     </div>
 
-    <!-- 服务器列表 -->
-    <el-row :gutter="20" class="servers-row">
-      <el-col :span="24">
-        <el-card>
-          <template #header>
-            <span>服务器节点</span>
-          </template>
-          
-          <el-table :data="servers" v-loading="loading">
-            <el-table-column prop="hostname" label="主机名" width="200" />
-            <el-table-column prop="ip" label="IP地址" width="150" />
-            <el-table-column prop="role" label="角色" width="120">
-              <template #default="scope">
-                <el-tag :type="getRoleType(scope.row.role)" size="small">
-                  {{ scope.row.role }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="CPU使用率" width="120">
-              <template #default="scope">
-                <el-progress 
-                  :percentage="scope.row.cpu_usage" 
-                  :color="getProgressColor(scope.row.cpu_usage)"
-                  :stroke-width="8"
-                />
-              </template>
-            </el-table-column>
-            <el-table-column label="内存使用率" width="120">
-              <template #default="scope">
-                <el-progress 
-                  :percentage="scope.row.memory_usage" 
-                  :color="getProgressColor(scope.row.memory_usage)"
-                  :stroke-width="8"
-                />
-              </template>
-            </el-table-column>
-            <el-table-column label="磁盘使用率" width="120">
-              <template #default="scope">
-                <el-progress 
-                  :percentage="scope.row.disk_usage" 
-                  :color="getProgressColor(scope.row.disk_usage)"
-                  :stroke-width="8"
-                />
-              </template>
-            </el-table-column>
-            <el-table-column prop="status" label="状态" width="100">
-              <template #default="scope">
-                <el-tag :type="scope.row.status === 'online' ? 'success' : 'danger'" size="small">
-                  {{ scope.row.status === 'online' ? '在线' : '离线' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="uptime" label="运行时间" />
-          </el-table>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <!-- 服务组件状态 -->
-    <el-row :gutter="20" class="services-row">
-      <el-col :span="12">
-        <el-card>
-          <template #header>
-            <span>大数据服务组件</span>
-          </template>
-          
-          <div class="services-grid">
-            <div 
-              v-for="service in services" 
-              :key="service.name"
-              class="service-item"
-              :class="{ 'service-error': service.status !== 'running' }"
-            >
-              <div class="service-icon">
-                <el-icon><Monitor /></el-icon>
+    <!-- 关键指标摘要 -->
+    <div class="metrics-summary">
+      <div class="summary-header">
+        <h3>
+          <el-icon class="section-icon"><DataBoard /></el-icon>
+          关键指标摘要
+        </h3>
+        <el-tag size="small" type="info">Prometheus数据源</el-tag>
+      </div>
+      
+      <div class="metrics-grid">
+        <el-row :gutter="20">
+          <el-col :xs="24" :sm="12" :md="6" :lg="6">
+            <div class="summary-card cluster-health">
+              <div class="card-header">
+                <div class="card-icon">
+                  <el-icon><Monitor /></el-icon>
+                </div>
+                <div class="card-title">集群健康</div>
               </div>
-              <div class="service-info">
-                <div class="service-name">{{ service.name }}</div>
-                <div class="service-status">
-                  <el-tag 
-                    :type="service.status === 'running' ? 'success' : 'danger'" 
-                    size="small"
-                  >
-                    {{ service.status === 'running' ? '运行中' : '停止' }}
-                  </el-tag>
+              <div class="card-content">
+                <div class="main-metric">
+                  <span class="metric-value">{{ clusterHealth.healthy_nodes || 0 }}</span>
+                  <span class="metric-unit">/ {{ clusterHealth.total_nodes || 0 }}</span>
+                </div>
+                <div class="metric-label">在线节点</div>
+                <div class="card-progress">
+                  <el-progress 
+                    :percentage="getClusterHealthPercentage()" 
+                    :status="getClusterHealthStatus()"
+                    :stroke-width="6"
+                    :show-text="false"
+                  />
                 </div>
               </div>
-              <div class="service-actions">
-                <el-button 
-                  v-if="service.status !== 'running'"
-                  size="small" 
-                  type="success"
-                  @click="startService(service)"
-                >
-                  启动
-                </el-button>
-                <el-button 
-                  v-else
-                  size="small" 
-                  type="danger"
-                  @click="stopService(service)"
-                >
-                  停止
-                </el-button>
+            </div>
+          </el-col>
+          
+          <el-col :xs="24" :sm="12" :md="6" :lg="6">
+            <div class="summary-card resource-usage">
+              <div class="card-header">
+                <div class="card-icon">
+                  <el-icon><Cpu /></el-icon>
+                </div>
+                <div class="card-title">平均CPU</div>
+              </div>
+              <div class="card-content">
+                <div class="main-metric">
+                  <span class="metric-value">{{ (clusterHealth.avg_cpu_usage || 0).toFixed(1) }}</span>
+                  <span class="metric-unit">%</span>
+                </div>
+                <div class="metric-label">CPU使用率</div>
+                <div class="card-progress">
+                  <el-progress 
+                    :percentage="clusterHealth.avg_cpu_usage || 0" 
+                    :status="getResourceStatus(clusterHealth.avg_cpu_usage, [70, 90])"
+                    :stroke-width="6"
+                    :show-text="false"
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        </el-card>
-      </el-col>
+          </el-col>
+          
+          <el-col :xs="24" :sm="12" :md="6" :lg="6">
+            <div class="summary-card memory-usage">
+              <div class="card-header">
+                <div class="card-icon">
+                  <el-icon><TakeawayBox /></el-icon>
+                </div>
+                <div class="card-title">平均内存</div>
+              </div>
+              <div class="card-content">
+                <div class="main-metric">
+                  <span class="metric-value">{{ (clusterHealth.avg_memory_usage || 0).toFixed(1) }}</span>
+                  <span class="metric-unit">%</span>
+                </div>
+                <div class="metric-label">内存使用率</div>
+                <div class="card-progress">
+                  <el-progress 
+                    :percentage="clusterHealth.avg_memory_usage || 0" 
+                    :status="getResourceStatus(clusterHealth.avg_memory_usage, [80, 95])"
+                    :stroke-width="6"
+                    :show-text="false"
+                  />
+                </div>
+              </div>
+            </div>
+          </el-col>
+          
+          <el-col :xs="24" :sm="12" :md="6" :lg="6">
+            <div class="summary-card component-health">
+              <div class="card-header">
+                <div class="card-icon">
+                  <el-icon><Setting /></el-icon>
+                </div>
+                <div class="card-title">组件健康</div>
+              </div>
+              <div class="card-content">
+                <div class="main-metric">
+                  <span class="metric-value">{{ getHealthyComponentsCount() }}</span>
+                  <span class="metric-unit">/ {{ getTotalComponentsCount() }}</span>
+                </div>
+                <div class="metric-label">健康组件</div>
+                <div class="card-progress">
+                  <el-progress 
+                    :percentage="getComponentHealthPercentage()" 
+                    :status="getComponentHealthStatus()"
+                    :stroke-width="6"
+                    :show-text="false"
+                  />
+                </div>
+              </div>
+            </div>
+          </el-col>
+        </el-row>
+      </div>
+    </div>
+
+    <!-- 快速导航 -->
+    <div class="quick-navigation">
+      <div class="nav-header">
+        <h3>
+          <el-icon class="section-icon"><Grid /></el-icon>
+          监控导航
+        </h3>
+        <span class="nav-description">快速访问各监控模块</span>
+      </div>
       
-      <el-col :span="12">
-        <el-card>
-          <template #header>
-            <span>资源使用趋势</span>
-          </template>
-          <v-chart 
-            class="chart" 
-            :option="resourceTrendOption" 
-            autoresize
-          />
-        </el-card>
-      </el-col>
-    </el-row>
+      <div class="nav-grid">
+        <el-row :gutter="20">
+          <el-col :xs="24" :sm="12" :md="8" :lg="8">
+            <div class="nav-card" @click="navigateTo('/cluster/overview')">
+              <div class="nav-icon cluster-overview">
+                <el-icon><Monitor /></el-icon>
+              </div>
+              <div class="nav-content">
+                <h4>集群总览</h4>
+                <p>查看节点状态、资源使用率、系统负载等集群级别监控数据</p>
+                <div class="nav-stats">
+                  <span>{{ clusterHealth.total_nodes || 0 }} 个节点</span>
+                  <span class="separator">•</span>
+                  <span :class="getClusterStatusClass()">{{ getClusterStatusText() }}</span>
+                </div>
+              </div>
+              <div class="nav-arrow">
+                <el-icon><ArrowRight /></el-icon>
+              </div>
+            </div>
+          </el-col>
+          
+          <el-col :xs="24" :sm="12" :md="8" :lg="8">
+            <div class="nav-card" @click="navigateTo('/cluster/components')">
+              <div class="nav-icon component-monitoring">
+                <el-icon><DataBoard /></el-icon>
+              </div>
+              <div class="nav-content">
+                <h4>组件监控</h4>
+                <p>监控HDFS、YARN、Spark等大数据组件的运行状态和健康情况</p>
+                <div class="nav-stats">
+                  <span>{{ getTotalComponentsCount() }} 个组件</span>
+                  <span class="separator">•</span>
+                  <span :class="getComponentsStatusClass()">{{ getComponentsStatusText() }}</span>
+                </div>
+              </div>
+              <div class="nav-arrow">
+                <el-icon><ArrowRight /></el-icon>
+              </div>
+            </div>
+          </el-col>
+          
+          <el-col :xs="24" :sm="12" :md="8" :lg="8">
+            <div class="nav-card" @click="navigateTo('/alert-rules')">
+              <div class="nav-icon alert-management">
+                <el-icon><Bell /></el-icon>
+              </div>
+              <div class="nav-content">
+                <h4>告警管理</h4>
+                <p>查看告警规则、历史告警、配置通知模板等告警相关功能</p>
+                <div class="nav-stats">
+                  <span>告警系统</span>
+                  <span class="separator">•</span>
+                  <span class="status-active">运行中</span>
+                </div>
+              </div>
+              <div class="nav-arrow">
+                <el-icon><ArrowRight /></el-icon>
+              </div>
+            </div>
+          </el-col>
+        </el-row>
+      </div>
+    </div>
+
+    <!-- 系统状态概览 -->
+    <div class="system-status">
+      <div class="status-header">
+        <h3>
+          <el-icon class="section-icon"><List /></el-icon>
+          系统状态概览
+        </h3>
+      </div>
+      
+      <div class="status-grid">
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <div class="status-card">
+              <h4>集群节点状态分布</h4>
+              <div class="status-chart">
+                <div class="status-item">
+                  <div class="status-indicator online"></div>
+                  <span class="status-label">在线节点</span>
+                  <span class="status-value">{{ clusterHealth.healthy_nodes || 0 }}</span>
+                </div>
+                <div class="status-item">
+                  <div class="status-indicator offline"></div>
+                  <span class="status-label">离线节点</span>
+                  <span class="status-value">{{ clusterHealth.unhealthy_nodes || 0 }}</span>
+                </div>
+                <div class="status-item">
+                  <div class="status-indicator warning"></div>
+                  <span class="status-label">警告节点</span>
+                  <span class="status-value">{{ getWarningNodesCount() }}</span>
+                </div>
+              </div>
+            </div>
+          </el-col>
+          
+          <el-col :span="12">
+            <div class="status-card">
+              <h4>大数据组件状态</h4>
+              <div class="components-status">
+                <div 
+                  v-for="(component, name) in componentsStatus" 
+                  :key="name"
+                  class="component-status-item"
+                  :class="getComponentStatusClass(component.status)"
+                >
+                  <div class="component-icon">
+                    <el-icon><component :is="getComponentIcon(name)" /></el-icon>
+                  </div>
+                  <div class="component-info">
+                    <span class="component-name">{{ getComponentDisplayName(name) }}</span>
+                    <el-tag 
+                      :type="getStatusTagType(component.status)" 
+                      size="small"
+                      effect="plain"
+                    >
+                      {{ getStatusText(component.status) }}
+                    </el-tag>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-col>
+        </el-row>
+      </div>
+    </div>
+
+    <!-- 加载状态 -->
+    <div v-if="loading && !hasData" class="loading-state">
+      <el-skeleton :rows="8" animated />
+      <p class="loading-text">正在加载监控数据...</p>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Refresh, Monitor } from '@element-plus/icons-vue'
+import {
+  Refresh,
+  Monitor,
+  TrendCharts,
+  DataBoard,
+  Cpu,
+  TakeawayBox,
+  Setting,
+  Grid,
+  ArrowRight,
+  Bell,
+  List,
+  Clock,
+  CircleCheck,
+  CircleClose,
+  Warning,
+  Files,
+  Connection,
+  Document
+} from '@element-plus/icons-vue'
 import { clusterService } from '@/services'
 
 const router = useRouter()
 
-// 数据
+// 数据状态
 const loading = ref(false)
-const clusterMetrics = ref([
-  {
-    name: '总节点数',
-    value: '8',
-    icon: 'Server',
-    color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-  },
-  {
-    name: 'CPU平均使用率',
-    value: '65%',
-    icon: 'Cpu',
-    color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
-  },
-  {
-    name: '内存平均使用率',
-    value: '72%',
-    icon: 'MemoryCard',
-    color: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)'
-  },
-  {
-    name: '磁盘平均使用率',
-    value: '45%',
-    icon: 'HardDisk',
-    color: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)'
-  }
-])
+const clusterHealth = ref<any>({})
+const componentsStatus = ref<Record<string, any>>({})
+const lastUpdateTime = ref<string>('')
 
-const servers = ref([
-  {
-    hostname: 'hadoop-master-01',
-    ip: '192.168.1.10',
-    role: 'NameNode',
-    cpu_usage: 65,
-    memory_usage: 72,
-    disk_usage: 45,
-    status: 'online',
-    uptime: '15天 3小时'
-  },
-  {
-    hostname: 'hadoop-master-02',
-    ip: '192.168.1.11',
-    role: 'NameNode',
-    cpu_usage: 58,
-    memory_usage: 68,
-    disk_usage: 42,
-    status: 'online',
-    uptime: '15天 3小时'
-  },
-  {
-    hostname: 'hadoop-worker-01',
-    ip: '192.168.1.20',
-    role: 'DataNode',
-    cpu_usage: 75,
-    memory_usage: 80,
-    disk_usage: 55,
-    status: 'online',
-    uptime: '14天 8小时'
-  },
-  {
-    hostname: 'hadoop-worker-02',
-    ip: '192.168.1.21',
-    role: 'DataNode',
-    cpu_usage: 82,
-    memory_usage: 85,
-    disk_usage: 62,
-    status: 'online',
-    uptime: '14天 8小时'
-  },
-  {
-    hostname: 'hadoop-worker-03',
-    ip: '192.168.1.22',
-    role: 'DataNode',
-    cpu_usage: 45,
-    memory_usage: 52,
-    disk_usage: 38,
-    status: 'offline',
-    uptime: '0天 0小时'
-  }
-])
+// 定时器
+let refreshTimer: number | null = null
 
-const services = ref([
-  { name: 'HDFS', status: 'running' },
-  { name: 'YARN', status: 'running' },
-  { name: 'Spark', status: 'running' },
-  { name: 'HBase', status: 'running' },
-  { name: 'Kafka', status: 'running' },
-  { name: 'Elasticsearch', status: 'stopped' },
-  { name: 'Prometheus', status: 'running' },
-  { name: 'Grafana', status: 'running' }
-])
-
-// 资源趋势图表配置
-const resourceTrendOption = ref({
-  title: {
-    text: '近24小时资源使用率'
-  },
-  tooltip: {
-    trigger: 'axis'
-  },
-  legend: {
-    data: ['CPU', '内存', '磁盘']
-  },
-  xAxis: {
-    type: 'category',
-    data: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']
-  },
-  yAxis: {
-    type: 'value',
-    max: 100,
-    axisLabel: {
-      formatter: '{value}%'
-    }
-  },
-  series: [
-    {
-      name: 'CPU',
-      type: 'line',
-      data: [45, 52, 61, 68, 75, 72, 65],
-      itemStyle: { color: '#409EFF' }
-    },
-    {
-      name: '内存',
-      type: 'line',
-      data: [55, 58, 65, 70, 78, 75, 72],
-      itemStyle: { color: '#67C23A' }
-    },
-    {
-      name: '磁盘',
-      type: 'line',
-      data: [35, 38, 42, 45, 48, 46, 45],
-      itemStyle: { color: '#E6A23C' }
-    }
-  ]
+// 计算属性
+const hasData = computed(() => {
+  return Object.keys(clusterHealth.value).length > 0 || Object.keys(componentsStatus.value).length > 0
 })
 
-// 方法
-const getRoleType = (role: string) => {
-  const types: Record<string, string> = {
-    'NameNode': 'danger',
-    'DataNode': 'primary',
-    'ResourceManager': 'warning',
-    'NodeManager': 'info'
-  }
-  return types[role] || 'info'
-}
-
-const getProgressColor = (percentage: number) => {
-  if (percentage < 60) return '#67C23A'
-  if (percentage < 80) return '#E6A23C'
-  return '#F56C6C'
-}
-
-const refreshData = () => {
-  ElMessage.success('数据已刷新')
-  // 这里可以重新加载数据
-}
-
-const toClusterOverview = () => {
-  router.push('/cluster/overview')
-}
-
-const startService = (service: any) => {
-  service.status = 'running'
-  ElMessage.success(`${service.name} 服务启动成功`)
-}
-
-const stopService = (service: any) => {
-  service.status = 'stopped'
-  ElMessage.warning(`${service.name} 服务已停止`)
-}
-
+// 生命周期
 onMounted(() => {
-  // 初始化数据
+  refreshAllData()
+  // 每60秒自动刷新
+  refreshTimer = setInterval(refreshAllData, 60000)
 })
+
+onUnmounted(() => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+  }
+})
+
+// 刷新所有数据
+const refreshAllData = async () => {
+  loading.value = true
+  try {
+    await Promise.all([
+      loadClusterHealth(),
+      loadComponentsStatus()
+    ])
+    lastUpdateTime.value = new Date().toISOString()
+    ElMessage.success('监控数据已刷新')
+  } catch (error) {
+    console.error('刷新数据失败:', error)
+    ElMessage.error('刷新数据失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 加载集群健康状态
+const loadClusterHealth = async () => {
+  try {
+    const response = await clusterService.getClusterHealth()
+    if (response.code === 0) {
+      clusterHealth.value = response.data.details || {}
+    }
+  } catch (error) {
+    console.error('加载集群健康状态失败:', error)
+  }
+}
+
+// 加载组件状态
+const loadComponentsStatus = async () => {
+  try {
+    const response = await clusterService.getClusterComponents()
+    if (response.code === 0) {
+      componentsStatus.value = response.data.components || {}
+    }
+  } catch (error) {
+    console.error('加载组件状态失败:', error)
+  }
+}
+
+// 系统健康相关函数
+const getSystemHealthType = () => {
+  const clusterHealthy = getClusterHealthPercentage() >= 80
+  const componentsHealthy = getComponentHealthPercentage() >= 80
+  
+  if (clusterHealthy && componentsHealthy) return 'success'
+  if (clusterHealthy || componentsHealthy) return 'warning'
+  return 'danger'
+}
+
+const getSystemHealthIcon = () => {
+  const type = getSystemHealthType()
+  if (type === 'success') return CircleCheck
+  if (type === 'warning') return Warning
+  return CircleClose
+}
+
+const getSystemHealthText = () => {
+  const type = getSystemHealthType()
+  if (type === 'success') return '系统健康'
+  if (type === 'warning') return '部分异常'
+  return '系统异常'
+}
+
+// 集群健康相关函数
+const getClusterHealthPercentage = () => {
+  const total = clusterHealth.value.total_nodes || 0
+  const healthy = clusterHealth.value.healthy_nodes || 0
+  return total > 0 ? Math.round((healthy / total) * 100) : 0
+}
+
+const getClusterHealthStatus = () => {
+  const percentage = getClusterHealthPercentage()
+  if (percentage >= 90) return 'success'
+  if (percentage >= 70) return 'warning'
+  return 'exception'
+}
+
+const getClusterStatusClass = () => {
+  const percentage = getClusterHealthPercentage()
+  if (percentage >= 90) return 'status-healthy'
+  if (percentage >= 70) return 'status-warning'
+  return 'status-error'
+}
+
+const getClusterStatusText = () => {
+  const percentage = getClusterHealthPercentage()
+  if (percentage >= 90) return '健康'
+  if (percentage >= 70) return '警告'
+  return '异常'
+}
+
+// 组件健康相关函数
+const getHealthyComponentsCount = () => {
+  return Object.values(componentsStatus.value).filter(
+    (component: any) => component.status === 'healthy'
+  ).length
+}
+
+const getTotalComponentsCount = () => {
+  return Object.keys(componentsStatus.value).length
+}
+
+const getComponentHealthPercentage = () => {
+  const total = getTotalComponentsCount()
+  const healthy = getHealthyComponentsCount()
+  return total > 0 ? Math.round((healthy / total) * 100) : 0
+}
+
+const getComponentHealthStatus = () => {
+  const percentage = getComponentHealthPercentage()
+  if (percentage >= 90) return 'success'
+  if (percentage >= 70) return 'warning'
+  return 'exception'
+}
+
+const getComponentsStatusClass = () => {
+  const percentage = getComponentHealthPercentage()
+  if (percentage >= 90) return 'status-healthy'
+  if (percentage >= 70) return 'status-warning'
+  return 'status-error'
+}
+
+const getComponentsStatusText = () => {
+  const percentage = getComponentHealthPercentage()
+  if (percentage >= 90) return '健康'
+  if (percentage >= 70) return '部分异常'
+  return '异常'
+}
+
+// 资源状态函数
+const getResourceStatus = (usage: number, thresholds: [number, number]) => {
+  if (usage >= thresholds[1]) return 'exception'
+  if (usage >= thresholds[0]) return 'warning'
+  return 'success'
+}
+
+// 警告节点数（CPU或内存使用率过高的节点）
+const getWarningNodesCount = () => {
+  const cpuWarning = (clusterHealth.value.avg_cpu_usage || 0) >= 80
+  const memoryWarning = (clusterHealth.value.avg_memory_usage || 0) >= 80
+  return cpuWarning || memoryWarning ? 1 : 0
+}
+
+// 组件相关函数
+const getComponentDisplayName = (name: string) => {
+  const displayNames: Record<string, string> = {
+    'hdfs': 'HDFS',
+    'yarn': 'YARN',
+    'spark': 'Spark',
+    'hive': 'Hive',
+    'kafka': 'Kafka',
+    'zookeeper': 'ZooKeeper',
+    'flink': 'Flink'
+  }
+  return displayNames[name] || name.toUpperCase()
+}
+
+const getComponentIcon = (name: string) => {
+  const icons: Record<string, any> = {
+    'hdfs': Files,
+    'yarn': Cpu,
+    'spark': DataBoard,
+    'hive': Document,
+    'kafka': Connection,
+    'zookeeper': Monitor,
+    'flink': Setting
+  }
+  return icons[name] || Monitor
+}
+
+const getComponentStatusClass = (status: string) => {
+  return `component-${status}`
+}
+
+const getStatusTagType = (status: string) => {
+  const types: Record<string, string> = {
+    'healthy': 'success',
+    'warning': 'warning',
+    'unhealthy': 'danger',
+    'unknown': 'info'
+  }
+  return types[status] || 'info'
+}
+
+const getStatusText = (status: string) => {
+  const texts: Record<string, string> = {
+    'healthy': '健康',
+    'warning': '警告',
+    'unhealthy': '异常',
+    'unknown': '未知'
+  }
+  return texts[status] || '未知'
+}
+
+// 导航函数
+const navigateTo = (path: string) => {
+  router.push(path)
+}
+
+// 工具函数
+const formatTime = (timeStr: string) => {
+  if (!timeStr) return '未知'
+  try {
+    return new Date(timeStr).toLocaleString()
+  } catch {
+    return '未知'
+  }
+}
 </script>
 
 <style scoped>
-.monitoring-container {
+.monitoring-dashboard {
   padding: 24px;
-  background: #faf9f7 !important;
-  min-height: 100vh;
+  background: #f5f7fa;
+  min-height: calc(100vh - 60px);
 }
 
-.page-header {
-  margin-bottom: 24px;
-  padding: 20px 24px;
-  background: rgba(255, 255, 255, 0.8);
-  border-radius: 20px;
-  backdrop-filter: blur(20px);
-  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+.dashboard-header {
+  margin-bottom: 32px;
+  padding: 24px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border-left: 4px solid #667eea;
   transition: all 0.3s ease;
 }
 
-.page-header:hover {
+.dashboard-header:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 48px rgba(102, 126, 234, 0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
 }
 
-.title-section h2 {
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.header-left h1 {
   color: #2d3748;
-  font-size: 24px;
-  font-weight: 600;
+  font-size: 28px;
+  font-weight: 700;
   margin: 0 0 8px 0;
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.subtitle {
+.header-left p {
   color: #718096;
+  font-size: 16px;
   margin: 0;
-  font-size: 14px;
-  font-weight: 500;
 }
 
-.metrics-section {
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.status-info .el-tag {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+  border: 1px solid rgba(102, 126, 234, 0.2);
+  border-radius: 12px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #667eea;
+}
+
+.update-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #718096;
+  font-size: 14px;
+}
+
+.metrics-summary {
   margin-bottom: 32px;
 }
 
-.section-card {
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.summary-header h3 {
+  color: #2d3748;
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.section-icon {
+  font-size: 24px;
+  color: #667eea;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.summary-card {
   border-radius: 20px;
   border: none;
   box-shadow: 0 8px 32px rgba(102, 126, 234, 0.1);
@@ -393,14 +682,15 @@ onMounted(() => {
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.3);
   transition: all 0.3s ease;
+  overflow: hidden;
 }
 
-.section-card:hover {
+.summary-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 16px 48px rgba(102, 126, 234, 0.15);
 }
 
-.section-card :deep(.el-card__header) {
+.summary-card .el-card__header {
   background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
   border-bottom: 1px solid rgba(102, 126, 234, 0.1);
   font-weight: 600;
@@ -408,153 +698,332 @@ onMounted(() => {
   padding: 20px 24px;
 }
 
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-.metric-item {
-  padding: 20px;
-  background: rgba(255, 255, 255, 0.6);
-  border-radius: 16px;
-  border: 1px solid rgba(102, 126, 234, 0.1);
-  transition: all 0.3s ease;
-  position: relative;
-  overflow: hidden;
-}
-
-.metric-item::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-}
-
-.metric-item:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 32px rgba(102, 126, 234, 0.15);
-  background: rgba(255, 255, 255, 0.8);
-}
-
-.metric-title {
-  font-weight: 600;
-  color: #2d3748;
-  margin-bottom: 12px;
+.card-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
-.metric-value {
-  font-size: 24px;
-  font-weight: 700;
+.card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #e0e7ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #667eea;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.card-content {
+  padding: 0 24px 24px;
+}
+
+.main-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   margin-bottom: 8px;
 }
 
-.metric-description {
-  font-size: 12px;
+.metric-value {
+  font-size: 36px;
+  font-weight: 700;
+  color: #667eea;
+}
+
+.metric-unit {
+  font-size: 16px;
   color: #718096;
 }
 
-.servers-row,
-.services-row {
-  margin-bottom: 24px;
+.metric-label {
+  font-size: 14px;
+  color: #718096;
+  margin-top: 4px;
 }
 
-.servers-row :deep(.el-card),
-.services-row :deep(.el-card) {
-  border: 1px solid #e8eaed;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  background: #ffffff;
+.card-progress {
+  margin-top: 12px;
 }
 
-.servers-row :deep(.el-card__header),
-.services-row :deep(.el-card__header) {
-  background: #f8f9fa;
-  border-bottom: 1px solid #e8eaed;
-  padding: 16px 20px;
+.quick-navigation {
+  margin-bottom: 32px;
 }
 
-.servers-row :deep(.el-card__header span),
-.services-row :deep(.el-card__header span) {
-  color: #202124;
-  font-weight: 500;
-  font-size: 16px;
+.nav-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
 }
 
-.services-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-}
-
-.service-item {
+.nav-header h3 {
+  color: #2d3748;
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
   display: flex;
   align-items: center;
-  padding: 16px;
-  border: 1px solid #e8eaed;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-  background: #ffffff;
+  gap: 12px;
 }
 
-.service-item:hover {
+.nav-description {
+  color: #718096;
+  font-size: 14px;
+}
+
+.nav-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.nav-card {
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.1);
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.3s ease;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 20px;
+}
+
+.nav-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 48px rgba(102, 126, 234, 0.15);
+}
+
+.nav-card .el-card__header {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+  border-bottom: 1px solid rgba(102, 126, 234, 0.1);
+  font-weight: 600;
+  color: #2d3748;
+  padding: 0;
+}
+
+.nav-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: #e0e7ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #667eea;
+  font-size: 28px;
+}
+
+.nav-icon.cluster-overview {
+  background: #dbeafe;
+  color: #3b82f6;
+}
+
+.nav-icon.component-monitoring {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.nav-icon.alert-management {
+  background: #fef3c7;
+  color: #f59e0b;
+}
+
+.nav-content h4 {
+  color: #2d3748;
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+}
+
+.nav-content p {
+  color: #718096;
+  font-size: 14px;
+  margin: 0 0 16px 0;
+}
+
+.nav-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #718096;
+  font-size: 14px;
+}
+
+.nav-stats .separator {
+  color: #e0e0e0;
+}
+
+.nav-arrow {
+  margin-left: auto;
+  color: #667eea;
+  font-size: 24px;
+}
+
+.system-status {
+  margin-bottom: 32px;
+}
+
+.status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.status-header h3 {
+  color: #2d3748;
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.status-card {
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.1);
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.status-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 48px rgba(102, 126, 234, 0.15);
+}
+
+.status-card .el-card__header {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+  border-bottom: 1px solid rgba(102, 126, 234, 0.1);
+  font-weight: 600;
+  color: #2d3748;
+  padding: 20px 24px;
+}
+
+.status-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-indicator {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+
+.status-label {
+  font-size: 14px;
+  color: #718096;
+}
+
+.status-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.components-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.component-status-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid #e0e0e0;
+  background: #f8f9fa;
+  transition: all 0.2s ease;
+}
+
+.component-status-item:hover {
   border-color: #1a73e8;
   box-shadow: 0 2px 8px rgba(26, 115, 232, 0.1);
 }
 
-.service-error {
-  border-color: #ea4335;
-  background: #fef7f0;
-}
-
-.service-icon {
-  width: 40px;
-  height: 40px;
+.component-icon {
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
-  background: #1a73e8;
+  background: #e0e7ff;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 12px;
-  color: white;
+  color: #667eea;
+  font-size: 20px;
 }
 
-.service-info {
+.component-info {
   flex: 1;
 }
 
-.service-name {
+.component-name {
+  font-size: 14px;
   font-weight: 500;
-  color: #202124;
+  color: #2d3748;
   margin-bottom: 4px;
 }
 
-.service-status {
-  font-size: 12px;
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+  color: #718096;
+  font-size: 16px;
 }
 
-.service-actions {
-  margin-left: 10px;
+.loading-text {
+  margin-top: 16px;
 }
 
-.service-actions .el-button {
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 6px;
-  font-weight: 400;
+:deep(.el-card) {
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
 }
 
-.chart {
-  height: 300px;
-  width: 100%;
+:deep(.el-card__header) {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%);
+  border-bottom: 1px solid rgba(102, 126, 234, 0.15);
+  font-weight: 600;
+  color: #2d3748;
+  padding: 16px 20px;
 }
 
 :deep(.el-table) {

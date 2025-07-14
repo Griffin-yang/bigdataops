@@ -699,6 +699,460 @@
 
 ---
 
+## 16. 集群监控管理
+
+### 获取集群总览信息
+- **接口路径**：`GET /api/cluster/overview`
+- **查询参数**：
+  - `service`: 服务筛选（可选，如："大数据"）
+  - `job`: 任务筛选（可选，如："consul-node"）
+  - `role`: 角色筛选（可选，如："bigdata-storage"）
+- **说明**：获取集群节点、资源使用情况等总览数据。支持按服务、任务、角色筛选。
+- **示例**：`GET /api/cluster/overview?service=大数据&role=bigdata-storage`
+- **返回示例**：
+  ```json
+  {
+    "code": 0,
+    "data": {
+      "total_nodes": 10,
+      "healthy_nodes": 8,
+      "unhealthy_nodes": 2,
+      "avg_cpu_usage": 65.5,
+      "avg_memory_usage": 72.3,
+      "avg_disk_usage": 45.8,
+      "services_status": {
+        "HDFS": {"healthy": 8, "total": 10},
+        "YARN": {"healthy": 6, "total": 8}
+      },
+      "service_distribution": {
+        "大数据": {"total": 10, "healthy": 8}
+      },
+      "filter_applied": {
+        "service": "大数据",
+        "job": null,
+        "role": null
+      },
+      "update_time": "2024-12-19T10:30:00Z"
+    },
+    "msg": "查询成功"
+  }
+  ```
+
+### 获取集群节点列表
+- **接口路径**：`GET /api/cluster/nodes`
+- **查询参数**：
+  - `status`: 节点状态筛选（可选：healthy/unhealthy）
+  - `service`: 服务筛选（可选，如："大数据"）
+  - `job`: 任务筛选（可选，如："consul-node"）
+  - `role`: 角色筛选（可选，如："bigdata-storage"）
+  - `page`: 页码（默认1）
+  - `size`: 每页数量（默认20，最大100）
+- **示例**：`GET /api/cluster/nodes?service=大数据&status=healthy&page=1&size=10`
+- **返回示例**：
+  ```json
+  {
+    "code": 0,
+    "data": {
+      "items": [
+        {
+          "instance": "192.168.132.2:9100",
+          "hostname": "bigdata-storage-node1.leyoujia.com",
+          "job": "consul-node",
+          "service": "大数据",
+          "role": "bigdata-storage",
+          "location": "深圳亚森3F-305",
+          "rack": "01-09",
+          "env": "pro",
+          "status": "up",
+          "cpu_usage": 68.5,
+          "memory_usage": 75.2,
+          "disk_usage": 45.8,
+          "network_bytes_recv": 1024000,
+          "network_bytes_sent": 2048000,
+          "load_1m": 1.25,
+          "uptime": 86400,
+          "uptime_formatted": "1天0小时",
+          "last_seen": "2024-12-19T10:30:00Z",
+          "roles": ["DataNode", "NodeManager"]
+        }
+      ],
+      "total": 10,
+      "page": 1,
+      "size": 10,
+      "pages": 1
+    },
+    "msg": "查询成功"
+  }
+  ```
+
+### 获取组件概览
+- **接口路径**：`GET /api/cluster/components`
+- **说明**：获取所有大数据组件的状态概览。
+- **返回示例**：
+  ```json
+  {
+    "code": 0,
+    "data": {
+      "components": [
+        {
+          "name": "HDFS",
+          "status": "healthy",
+          "total_instances": 12,
+          "healthy_instances": 11,
+          "unhealthy_instances": 1,
+          "key_metrics": {
+            "capacity_used_percent": 65.2,
+            "blocks_total": 1500000,
+            "blocks_corrupt": 0
+          }
+        },
+        {
+          "name": "YARN",
+          "status": "healthy",
+          "total_instances": 8,
+          "healthy_instances": 8,
+          "unhealthy_instances": 0,
+          "key_metrics": {
+            "apps_running": 25,
+            "apps_pending": 3,
+            "memory_available_mb": 819200
+          }
+        }
+      ]
+    },
+    "msg": "查询成功"
+  }
+  ```
+
+### 获取组件详细信息
+- **接口路径**：`GET /api/cluster/components/{component_name}`
+- **说明**：获取特定组件的详细监控信息。
+- **示例**：`GET /api/cluster/components/HDFS`
+- **返回示例**：
+  ```json
+  {
+    "code": 0,
+    "data": {
+      "name": "HDFS",
+      "status": "healthy",
+      "version": "3.3.4",
+      "instances": [
+        {
+          "type": "NameNode",
+          "hostname": "bigdata-master-001",
+          "status": "active",
+          "metrics": {
+            "capacity_total_gb": 5120,
+            "capacity_used_gb": 3340,
+            "files_total": 2500000,
+            "blocks_total": 1500000
+          }
+        }
+      ],
+      "alerts": [
+        {
+          "level": "warning",
+          "message": "DataNode存储使用率超过80%"
+        }
+      ]
+    },
+    "msg": "查询成功"
+  }
+  ```
+
+### 集群健康检查
+- **接口路径**：`GET /api/cluster/health`
+- **说明**：快速健康检查接口，用于监控系统。
+- **返回示例**：
+  ```json
+  {
+    "code": 0,
+    "data": {
+      "status": "healthy",
+      "message": "集群状态良好",
+      "details": {
+        "total_nodes": 10,
+        "healthy_nodes": 10,
+        "unhealthy_nodes": 0,
+        "avg_cpu_usage": 65.5,
+        "avg_memory_usage": 72.3
+      }
+    },
+    "msg": "健康检查完成"
+  }
+  ```
+
+### 集群监控筛选参数说明
+
+**可用的service值**：
+- `大数据`：主要大数据服务
+- `bigdata-ds-new`：数据科学服务
+- `bigdata-hadoop-new`：Hadoop服务
+- `bigdata-hive-new`：Hive服务  
+- `bigdata-zookeeper-new`：ZooKeeper服务
+
+**可用的job值**：
+- `consul-node`：Consul节点监控
+- `bigdata-ds-new`：大数据数据科学
+- `bigdata-hadoop-new`：大数据Hadoop服务
+- `bigdata-hive-new`：大数据Hive服务
+- `bigdata-zookeeper-new`：大数据ZooKeeper服务
+- `bigdata-exporter-new`：大数据导出器
+
+**可用的role值**：
+- `bigdata-storage`：存储节点
+- `bigdata-compute`：计算节点
+- `bigdata-master`：主节点
+
+**说明**：
+- 推荐使用`service="大数据"`作为默认筛选条件
+- 可以组合多个筛选条件进行精确查询
+- 不提供筛选参数时返回所有节点数据
+- 前端界面默认显示`service="大数据"`的节点，并提供job、role等筛选选项
+- 支持按job筛选来查看特定大数据组件所在的机器
+
+---
+
+## 17. 业务监控管理
+
+### 获取可用集群列表
+- **接口路径**：`GET /api/business/clusters`
+- **说明**：获取支持业务监控的集群列表。
+- **返回示例**：
+  ```json
+  {
+    "code": 0,
+    "msg": "success",
+    "data": [
+      {
+        "name": "CDH集群",
+        "value": "cdh",
+        "schedulers": ["Azkaban", "DolphinScheduler"],
+        "description": "CDH集群支持Azkaban和DolphinScheduler调度"
+      },
+      {
+        "name": "Apache集群",
+        "value": "apache",
+        "schedulers": ["DolphinScheduler"],
+        "description": "Apache开源集群使用DolphinScheduler调度"
+      }
+    ]
+  }
+  ```
+
+### 获取业务监控概览
+- **接口路径**：`GET /api/business/overview`
+- **查询参数**：
+  - `cluster_name`: 集群名称（必填）
+  - `start_date`: 开始日期 YYYY-MM-DD（可选，默认昨天）
+  - `end_date`: 结束日期 YYYY-MM-DD（可选，默认昨天）
+- **示例**：`GET /api/business/overview?cluster_name=cdh&start_date=2024-12-18&end_date=2024-12-19`
+- **返回示例**：
+  ```json
+  {
+    "code": 0,
+    "msg": "success",
+    "data": {
+      "total_jobs": 1250,
+      "success_jobs": 1180,
+      "failed_jobs": 70,
+      "success_rate": 94.4,
+      "scheduler_distribution": {
+        "Azkaban": 750,
+        "DolphinScheduler": 500
+      },
+      "peak_execution_hour": "14:00",
+      "avg_execution_time": "8.5分钟"
+    }
+  }
+  ```
+
+### 获取失败任务列表
+- **接口路径**：`GET /api/business/failed-jobs`
+- **查询参数**：
+  - `cluster_name`: 集群名称（必填）
+  - `start_date`: 开始日期 YYYY-MM-DD（可选）
+  - `end_date`: 结束日期 YYYY-MM-DD（可选）
+  - `page`: 页码（默认1）
+  - `size`: 每页数量（默认20）
+- **返回示例**：
+  ```json
+  {
+    "code": 0,
+    "msg": "success",
+    "data": {
+      "items": [
+        {
+          "job_id": "job_20241219_001",
+          "job_name": "数据ETL处理任务",
+          "scheduler": "Azkaban",
+          "start_time": "2024-12-19T08:30:00Z",
+          "end_time": "2024-12-19T08:45:00Z",
+          "duration": "15分钟",
+          "error_message": "HDFS空间不足",
+          "retry_count": 2,
+          "job_url": "http://azkaban.example.com/executor?execid=12345"
+        }
+      ],
+      "total": 70,
+      "page": 1,
+      "size": 20,
+      "pages": 4
+    }
+  }
+  ```
+
+### 获取执行时间排行榜
+- **接口路径**：`GET /api/business/top-duration-jobs`
+- **查询参数**：
+  - `cluster_name`: 集群名称（必填）
+  - `start_date`: 开始日期 YYYY-MM-DD（可选）
+  - `end_date`: 结束日期 YYYY-MM-DD（可选）
+  - `limit`: 返回数量限制（默认50）
+- **返回示例**：
+  ```json
+  {
+    "code": 0,
+    "msg": "success",
+    "data": [
+      {
+        "rank": 1,
+        "job_id": "job_20241219_010",
+        "job_name": "大数据全量同步任务",
+        "scheduler": "DolphinScheduler",
+        "duration": "2小时35分钟",
+        "duration_seconds": 9300,
+        "start_time": "2024-12-19T02:00:00Z",
+        "end_time": "2024-12-19T04:35:00Z",
+        "status": "success"
+      }
+    ]
+  }
+  ```
+
+### 获取业务统计数据
+- **接口路径**：`GET /api/business/statistics`
+- **查询参数**：
+  - `cluster_name`: 集群名称（必填）
+  - `start_date`: 开始日期 YYYY-MM-DD（可选）
+  - `end_date`: 结束日期 YYYY-MM-DD（可选）
+- **返回示例**：
+  ```json
+  {
+    "code": 0,
+    "msg": "success",
+    "data": {
+      "hourly_distribution": [
+        {"hour": "00:00", "count": 25},
+        {"hour": "01:00", "count": 40}
+      ],
+      "scheduler_performance": {
+        "Azkaban": {
+          "total": 750,
+          "success": 720,
+          "failed": 30,
+          "avg_duration": "6.2分钟"
+        },
+        "DolphinScheduler": {
+          "total": 500,
+          "success": 460,
+          "failed": 40,
+          "avg_duration": "12.8分钟"
+        }
+      },
+      "job_type_distribution": {
+        "ETL": 450,
+        "数据同步": 380,
+        "报表生成": 280,
+        "数据清洗": 140
+      }
+    }
+  }
+  ```
+
+---
+
+## 18. 告警历史扩展功能
+
+### 获取告警分组列表
+- **接口路径**：`GET /alert/history/categories`
+- **说明**：获取告警历史中存在的所有分组。
+- **返回示例**：
+  ```json
+  {
+    "code": 0,
+    "data": ["hdfs", "hive", "spark", "mysql", "kafka", "zookeeper"],
+    "msg": "查询成功"
+  }
+  ```
+
+### 删除告警历史记录
+- **接口路径**：`DELETE /alert/history/{history_id}`
+- **说明**：删除指定的告警历史记录。
+- **返回示例**：
+  ```json
+  {
+    "code": 0,
+    "data": {"id": 123},
+    "msg": "删除成功"
+  }
+  ```
+
+### 批量删除告警历史
+- **接口路径**：`POST /alert/history/batch_delete`
+- **请求体**：
+  ```json
+  {
+    "history_ids": [1, 2, 3, 4, 5]
+  }
+  ```
+- **返回示例**：
+  ```json
+  {
+    "code": 0,
+    "data": {"deleted_count": 5},
+    "msg": "成功删除 5 条记录"
+  }
+  ```
+
+### 确认告警（停止发送）
+- **接口路径**：`POST /alert/history/{history_id}/acknowledge`
+- **查询参数**：
+  - `acknowledged_by`: 确认人（必填）
+- **说明**：确认指定告警，停止继续发送通知。
+- **返回示例**：
+  ```json
+  {
+    "code": 0,
+    "data": {
+      "history_id": 123,
+      "acknowledged_by": "admin",
+      "acknowledged_at": "2024-12-19T10:30:00Z"
+    },
+    "msg": "告警确认成功，已停止发送"
+  }
+  ```
+
+### 确认规则的所有告警
+- **接口路径**：`POST /alert/rule/{rule_id}/acknowledge`
+- **查询参数**：
+  - `acknowledged_by`: 确认人（必填）
+- **说明**：确认指定规则的所有告警，将规则状态设为静默。
+- **返回示例**：
+  ```json
+  {
+    "code": 0,
+    "data": {
+      "rule_id": 15,
+      "acknowledged_by": "admin",
+      "previous_state": "alerting"
+    },
+    "msg": "规则告警确认成功，已停止发送"
+  }
+  ```
+
+---
+
 ## 通用响应格式
 
 所有接口都遵循统一的响应格式：
@@ -1085,3 +1539,63 @@ curl -X POST http://your-host/api/message/sendTeam \
 ---
 
 > 所有接口均支持通过 env 参数区分环境，所有请求和返回均为 JSON 格式。 
+
+---
+
+## 新增功能说明
+
+### Job筛选选项更新
+
+**可用的job值**：
+- `consul-node`：Consul节点监控
+- `bigdata-ds-new`：大数据数据科学
+- `bigdata-hadoop-new`：大数据Hadoop服务
+- `bigdata-hive-new`：大数据Hive服务
+- `bigdata-zookeeper-new`：大数据ZooKeeper服务
+- `bigdata-exporter-new`：大数据导出器
+
+**前端筛选增强**：
+- 支持`filterable`和`allow-create`，可以输入自定义job参数
+- 默认提供常用的大数据组件job选项
+
+### 基于port_status的服务角色查询
+
+**功能说明**：
+- 节点的服务角色现在基于`port_status`指标查询
+- 自动解析运行在每个节点上的具体服务组件
+- 支持健康状态检查（只显示status=1的服务）
+
+**port_status指标格式**：
+```prometheus
+port_status{group="bigdata-exporter", instance="192.168.7.20:9333", job="bigdata-exporter-new", name="Ranger-admin_bd-prod-lyj-master02", port="6080", role="bigdata-exporter"}
+```
+
+**支持的服务识别**：
+- **Ranger**: Ranger Admin (6080), Ranger UserSync (5151)
+- **HDFS**: NameNode (9870), DataNode (9864), JournalNode (8485)
+- **YARN**: ResourceManager (8088), NodeManager (8042)
+- **Hive**: HiveServer2 (10000), Hive MetaStore (9083)
+- **Spark**: Spark History Server (18080/18081)
+- **DolphinScheduler**: DS-Master (5678), DS-ApiServer (12345)
+- **ZooKeeper**: ZooKeeper (2181)
+- **其他**: LDAP (389), Kafka (9092), Elasticsearch (9200), Grafana (3000), Prometheus (9090)
+
+**角色识别逻辑**：
+1. 首先通过服务名称匹配（如：Ranger-admin → Ranger Admin）
+2. 如果名称匹配失败，通过端口号推断服务类型
+3. 最后使用name字段的前缀作为角色名
+
+**查询示例**：
+```bash
+# 查询特定节点的服务角色
+GET /api/cluster/nodes?service=大数据&job=bigdata-exporter-new
+
+# 返回的roles字段示例：
+"roles": ["Ranger Admin", "HDFS JournalNode", "DolphinScheduler API", "ZooKeeper"]
+```
+
+**优势**：
+- 实时反映节点上实际运行的服务
+- 基于健康状态（port_status=1）显示可用服务
+- 支持动态服务发现和角色识别
+- 提供详细的服务端口信息 

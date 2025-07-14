@@ -7,10 +7,18 @@ from app.utils.logger import logger
 router = APIRouter()
 
 @router.get("/cluster/overview", response_model=CommonResponse[dict])
-async def get_cluster_overview():
+async def get_cluster_overview(
+    service: Optional[str] = Query(None, description="服务筛选"),
+    job: Optional[str] = Query(None, description="任务筛选"),
+    role: Optional[str] = Query(None, description="角色筛选")
+):
     """获取集群总览信息"""
     try:
-        overview = await cluster_service.get_cluster_overview()
+        overview = await cluster_service.get_cluster_overview(
+            service_filter=service,
+            job_filter=job, 
+            role_filter=role
+        )
         return {
             "code": 0,
             "data": overview,
@@ -27,12 +35,20 @@ async def get_cluster_overview():
 @router.get("/cluster/nodes", response_model=CommonResponse[dict])
 async def get_cluster_nodes(
     status: Optional[str] = Query(None, description="节点状态筛选"),
+    service: Optional[str] = Query(None, description="服务筛选"),
+    job: Optional[str] = Query(None, description="任务筛选"), 
+    role: Optional[str] = Query(None, description="角色筛选"),
     page: int = Query(1, ge=1, description="页码"),
     size: int = Query(20, ge=1, le=100, description="每页数量")
 ):
     """获取集群节点列表"""
     try:
-        all_nodes = await cluster_service.get_nodes_list(status)
+        all_nodes = await cluster_service.get_nodes_list(
+            status_filter=status,
+            service_filter=service,
+            job_filter=job,
+            role_filter=role
+        )
         
         total = len(all_nodes)
         start_idx = (page - 1) * size
