@@ -49,14 +49,14 @@
             <label>查询时间:</label>
             <el-date-picker
               v-model="dateRange"
-              type="daterange"
+              type="datetimerange"
               range-separator="至"
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
-              format="YYYY-MM-DD"
-              value-format="YYYY-MM-DD"
+              start-placeholder="开始时间"
+              end-placeholder="结束时间"
+              format="YYYY-MM-DD HH:mm:ss"
+              value-format="YYYY-MM-DD HH:mm:ss"
               @change="handleDateChange"
-              style="width: 280px"
+              style="width: 380px"
             />
           </div>
           
@@ -181,10 +181,9 @@
         </el-col>
       </el-row>
 
-      <!-- 任务列表区域 -->
+      <!-- 失败任务列表区域 -->
       <el-row :gutter="24" class="table-section">
-        <!-- 失败任务列表 -->
-        <el-col :span="14">
+        <el-col :span="24">
           <el-card>
             <template #header>
               <div class="card-header">
@@ -193,10 +192,11 @@
               </div>
             </template>
             
-            <el-table :data="failedJobsData.items" v-loading="loading" height="400">
-              <el-table-column prop="job_name" label="任务名称" min-width="160" show-overflow-tooltip />
-              <el-table-column prop="project_name" label="项目名称" width="120" show-overflow-tooltip />
-              <el-table-column prop="submit_user" label="提交用户" width="100" show-overflow-tooltip />
+            <el-table :data="failedJobsData.items" v-loading="loading" height="500">
+              <el-table-column type="index" label="序号" width="60" :index="(index: number) => (failedJobsData.page - 1) * failedJobsData.size + index + 1" />
+              <el-table-column prop="job_name" label="任务名称" min-width="200" show-overflow-tooltip />
+              <el-table-column prop="project_name" label="项目名称" width="150" show-overflow-tooltip />
+              <el-table-column prop="submit_user" label="提交用户" width="120" show-overflow-tooltip />
               <el-table-column label="调度器" width="100">
                 <template #default="{ row }">
                   <el-tag 
@@ -208,13 +208,13 @@
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="execution_time" label="执行时间" width="140" />
-              <el-table-column label="时长" width="80">
+              <el-table-column prop="execution_time" label="执行时间" width="160" />
+              <el-table-column label="时长" width="100">
                 <template #default="{ row }">
                   {{ formatDuration(row.duration) }}
                 </template>
               </el-table-column>
-              <el-table-column prop="status" label="状态" width="80">
+              <el-table-column prop="status" label="状态" width="100">
                 <template #default="{ row }">
                   <el-tag 
                     :type="getStatusTagType(row.status)"
@@ -224,7 +224,7 @@
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="操作" width="100">
+              <el-table-column label="操作" width="120">
                 <template #default="{ row }">
                   <el-button 
                     type="primary" 
@@ -237,11 +237,26 @@
                 </template>
               </el-table-column>
             </el-table>
+            
+            <!-- 分页组件 -->
+            <div class="pagination-container">
+              <el-pagination
+                v-model:current-page="failedJobsData.page"
+                v-model:page-size="failedJobsData.size"
+                :page-sizes="[20, 50, 100, 200]"
+                :total="failedJobsData.total"
+                layout="total, sizes, prev, pager, next, jumper"
+                @size-change="handleFailedJobsSizeChange"
+                @current-change="handleFailedJobsPageChange"
+              />
+            </div>
           </el-card>
         </el-col>
-        
-        <!-- 执行时间排行榜 -->
-        <el-col :span="10">
+      </el-row>
+
+      <!-- 执行时间排行榜区域 -->
+      <el-row :gutter="24" class="table-section">
+        <el-col :span="24">
           <el-card>
             <template #header>
               <div class="card-header">
@@ -252,32 +267,35 @@
             
             <el-table :data="topDurationJobs" v-loading="loading" height="400">
               <el-table-column type="index" label="排名" width="60" :index="(index: number) => index + 1" />
-              <el-table-column prop="job_name" label="任务名称" min-width="140" show-overflow-tooltip />
-              <el-table-column prop="project_name" label="项目" width="100" show-overflow-tooltip />
-              <el-table-column label="调度器" width="80">
+              <el-table-column prop="job_name" label="任务名称" min-width="200" show-overflow-tooltip />
+              <el-table-column prop="project_name" label="项目名称" width="150" show-overflow-tooltip />
+              <el-table-column prop="submit_user" label="提交用户" width="120" show-overflow-tooltip />
+              <el-table-column label="调度器" width="100">
                 <template #default="{ row }">
                   <el-tag 
                     :type="getSchedulerTagType(row.scheduler_type)"
                     size="small"
                     effect="light"
                   >
-                    {{ row.scheduler_type === 'Azkaban' ? 'AZ' : 'DS' }}
+                    {{ row.scheduler_type || row.scheduler }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="执行时长" width="100">
+              <el-table-column prop="execution_time" label="执行时间" width="160" />
+              <el-table-column label="执行时长" width="120">
                 <template #default="{ row }">
                   <span class="duration-text">{{ formatDuration(row.duration) }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="操作" width="80">
+              <el-table-column label="操作" width="120">
                 <template #default="{ row }">
                   <el-button 
-                    type="text" 
+                    type="primary" 
                     size="small" 
                     @click="openJobDetail(row.view_url)"
+                    link
                   >
-                    详情
+                    查看详情
                   </el-button>
                 </template>
               </el-table-column>
@@ -349,13 +367,24 @@ onMounted(async () => {
     const cdhCluster = clusters.value.find(cluster => cluster.id === 'cdh')
     selectedCluster.value = apacheCluster ? apacheCluster.id : (cdhCluster ? cdhCluster.id : clusters.value[0].id)
     
-    // 设置默认时间范围为昨日此时到现在时刻
+    // 设置默认时间范围为过去24小时
     const now = new Date()
-    const yesterday = new Date()
-    yesterday.setDate(yesterday.getDate() - 1)
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
     
-    const startDateStr = yesterday.toISOString().split('T')[0]
-    const endDateStr = now.toISOString().split('T')[0]
+    // 使用本地时间格式化，避免时区问题
+    const startDateStr = yesterday.getFullYear() + '-' + 
+      String(yesterday.getMonth() + 1).padStart(2, '0') + '-' + 
+      String(yesterday.getDate()).padStart(2, '0') + ' ' + 
+      String(yesterday.getHours()).padStart(2, '0') + ':' + 
+      String(yesterday.getMinutes()).padStart(2, '0') + ':' + 
+      String(yesterday.getSeconds()).padStart(2, '0')
+    
+    const endDateStr = now.getFullYear() + '-' + 
+      String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+      String(now.getDate()).padStart(2, '0') + ' ' + 
+      String(now.getHours()).padStart(2, '0') + ':' + 
+      String(now.getMinutes()).padStart(2, '0') + ':' + 
+      String(now.getSeconds()).padStart(2, '0')
     
     dateRange.value = [startDateStr, endDateStr]
     
@@ -418,17 +447,18 @@ const queryData = async () => {
     }
     
     // 并行获取所有数据
-    const [overviewData, failedJobsDataResult, topDurationJobsResult, statisticsResult] = await Promise.all([
+    const [overviewData, topDurationJobsResult, statisticsResult] = await Promise.all([
       businessService.getBusinessOverview(selectedCluster.value, startDate, endDate),
-      businessService.getFailedJobs(selectedCluster.value, startDate, endDate),
       businessService.getTopDurationJobs(selectedCluster.value, startDate, endDate, 50),
       businessService.getStatistics(selectedCluster.value, startDate, endDate)
     ])
     
     overview.value = overviewData
-    failedJobsData.value = failedJobsDataResult
     topDurationJobs.value = topDurationJobsResult
     statisticsData.value = statisticsResult
+    
+    // 单独查询失败任务（支持分页）
+    await queryFailedJobs()
     
     // 等待DOM更新后初始化图表
     await nextTick()
@@ -514,6 +544,13 @@ const initDailyChart = () => {
   const chart = echarts.init(dailyChartRef.value)
   const { daily_statistics } = statisticsData.value
   
+  console.log('每日统计数据:', daily_statistics)
+  
+  if (!daily_statistics || daily_statistics.length === 0) {
+    console.warn('每日统计数据为空')
+    return
+  }
+  
   const option = {
     tooltip: {
       trigger: 'axis',
@@ -572,6 +609,7 @@ const initDailyChart = () => {
     ]
   }
   
+  console.log('图表配置:', option)
   chart.setOption(option)
 }
 
@@ -581,6 +619,13 @@ const initSchedulerChart = () => {
   
   const chart = echarts.init(schedulerChartRef.value)
   const { scheduler_distribution } = statisticsData.value
+  
+  console.log('调度器分布数据:', scheduler_distribution)
+  
+  if (!scheduler_distribution || scheduler_distribution.length === 0) {
+    console.warn('调度器分布数据为空')
+    return
+  }
   
   const option = {
     tooltip: {
@@ -615,6 +660,7 @@ const initSchedulerChart = () => {
     ]
   }
   
+  console.log('调度器图表配置:', option)
   chart.setOption(option)
 }
 
@@ -624,6 +670,13 @@ const initProjectChart = () => {
   
   const chart = echarts.init(projectChartRef.value)
   const { project_distribution } = statisticsData.value
+  
+  console.log('项目分布数据:', project_distribution)
+  
+  if (!project_distribution || project_distribution.length === 0) {
+    console.warn('项目分布数据为空')
+    return
+  }
   
   const option = {
     tooltip: {
@@ -658,6 +711,7 @@ const initProjectChart = () => {
     ]
   }
   
+  console.log('项目图表配置:', option)
   chart.setOption(option)
 }
 
@@ -745,6 +799,40 @@ const getSchedulerInfo = (clusterId: string) => {
     return 'DolphinScheduler'
   } else {
     return '未知调度器'
+  }
+}
+
+// 分页处理函数
+const handleFailedJobsSizeChange = (size: number) => {
+  failedJobsData.value.size = size
+  failedJobsData.value.page = 1
+  queryFailedJobs()
+}
+
+const handleFailedJobsPageChange = (page: number) => {
+  failedJobsData.value.page = page
+  queryFailedJobs()
+}
+
+// 查询失败任务列表（支持分页）
+const queryFailedJobs = async () => {
+  if (!selectedCluster.value || !dateRange.value[0] || !dateRange.value[1]) {
+    return
+  }
+  
+  try {
+    const [startDate, endDate] = dateRange.value
+    const result = await businessService.getFailedJobs(
+      selectedCluster.value, 
+      startDate, 
+      endDate, 
+      failedJobsData.value.page, 
+      failedJobsData.value.size
+    )
+    failedJobsData.value = result
+  } catch (error: any) {
+    console.error('查询失败任务失败:', error)
+    ElMessage.error(`查询失败任务失败: ${error.message || '未知错误'}`)
   }
 }
 </script>
@@ -857,5 +945,13 @@ const getSchedulerInfo = (clusterId: string) => {
   font-size: 14px;
   color: #718096;
   margin-top: 4px;
+}
+
+.pagination-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+  padding: 16px 0;
+  border-top: 1px solid #e2e8f0;
 }
 </style> 

@@ -241,6 +241,7 @@
                 <el-option label="<" value="lt" />
                 <el-option label="<=" value="lte" />
                 <el-option label="=" value="eq" />
+                <el-option label="!=" value="ne" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -687,7 +688,8 @@ const getComparisonText = (comparison: string) => {
     'gte': '>=',
     'lt': '<',
     'lte': '<=',
-    'eq': '='
+    'eq': '=',
+    'ne': '!='
   }
   return texts[comparison] || comparison
 }
@@ -710,7 +712,8 @@ const parseCondition = (condition: string) => {
     '>=': 'gte',
     '<': 'lt',
     '<=': 'lte',
-    '=': 'eq'
+    '=': 'eq',
+    '!=': 'ne'
   }
   
   return {
@@ -816,7 +819,15 @@ const editRule = (rule: AlertRule) => {
   ruleForm.value = { 
     ...rule,
     comparison,
-    threshold
+    threshold,
+    // 确保所有字段都有默认值
+    for_duration: rule.for_duration || 60,
+    duration: rule.duration || 3600,
+    repeat: rule.repeat || 0,
+    max_send_count: rule.max_send_count,
+    enabled: rule.enabled !== undefined ? rule.enabled : true,
+    description: rule.description || '',
+    suppress: rule.suppress || ''
   }
   
   labelsText.value = JSON.stringify(rule.labels || {}, null, 2)
@@ -873,7 +884,10 @@ const resetForm = () => {
     for_duration: 60
   }
   labelsText.value = '{}'
-  formRef.value?.resetFields()
+  // 确保表单字段被正确重置
+  nextTick(() => {
+    formRef.value?.resetFields()
+  })
 }
 
 const comparisonMap = {
@@ -881,7 +895,8 @@ const comparisonMap = {
   gte: '>=',
   lt: '<',
   lte: '<=',
-  eq: '='
+  eq: '=',
+  ne: '!='
 }
 
 const saveRule = async () => {
@@ -894,6 +909,17 @@ const saveRule = async () => {
     const comparison = ruleForm.value.comparison || 'gt'
     const condition = `${comparisonMap[comparison as keyof typeof comparisonMap]} ${ruleForm.value.threshold || 0}`
 
+    // 解析标签
+    let labels = {}
+    try {
+      if (labelsText.value && labelsText.value.trim() !== '{}') {
+        labels = JSON.parse(labelsText.value)
+      }
+    } catch (error) {
+      ElMessage.error('标签格式错误，请检查JSON格式')
+      return
+    }
+
     // 只组装后端需要的字段
     const payload = {
       name: ruleForm.value.name,
@@ -901,6 +927,8 @@ const saveRule = async () => {
       promql: ruleForm.value.promql,
       condition,
       level: ruleForm.value.level,
+      description: ruleForm.value.description,
+      labels,
       suppress: ruleForm.value.suppress,
       repeat: ruleForm.value.repeat,
       duration: ruleForm.value.duration || 3600, // 告警发送持续时间，默认1小时

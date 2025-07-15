@@ -373,14 +373,14 @@ const pagination = reactive({
 // 详情对话框
 const detailDialog = reactive({
   visible: false,
-  data: null
+  data: null as any
 })
 
 // 解决告警对话框
 const resolveDialog = reactive({
   visible: false,
   loading: false,
-  currentAlert: null,
+  currentAlert: null as any,
   form: {
     reason: ''
   }
@@ -570,9 +570,20 @@ const getDuration = (startTime: string, endTime: string | null) => {
   return `${Math.floor(diffMs / (1000 * 60 * 60 * 24))}天`
 }
 
-const parseLabels = (labelsStr: string) => {
-  if (!labelsStr) return []
-  return labelsStr.split(',').map(label => label.trim()).filter(label => label)
+const parseLabels = (labels: any) => {
+  if (!labels) return []
+  
+  // 如果是字符串，按逗号分割
+  if (typeof labels === 'string') {
+    return labels.split(',').map(label => label.trim()).filter(label => label)
+  }
+  
+  // 如果是JSON对象，转换为键值对字符串
+  if (typeof labels === 'object') {
+    return Object.entries(labels).map(([key, value]) => `${key}=${value}`)
+  }
+  
+  return []
 }
 
 // 初始化

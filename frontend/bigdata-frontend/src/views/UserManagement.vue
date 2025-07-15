@@ -60,8 +60,8 @@
               >
                 <el-table-column prop="uid" label="用户ID" min-width="120" show-overflow-tooltip />
                 <el-table-column prop="username" label="用户名" min-width="120" show-overflow-tooltip />
-                <el-table-column prop="email" label="邮箱" min-width="200" show-overflow-tooltip />
-                <el-table-column prop="gidNumber" label="GID" width="100" align="center" />
+                <el-table-column prop="email" label="邮箱" min-width="150" show-overflow-tooltip />
+                <el-table-column prop="gidNumber" label="GID" width="150" align="center" />
                 <el-table-column prop="homeDirectory" label="主目录" min-width="200" show-overflow-tooltip />
                 <el-table-column label="所属组" min-width="220">
                   <template #default="{ row }">
@@ -145,7 +145,7 @@
                 :header-cell-style="{ backgroundColor: '#f8fafc', color: '#374151', fontWeight: '600' }"
               >
                 <el-table-column prop="groupname" label="组名" min-width="150" show-overflow-tooltip />
-                <el-table-column prop="gidNumber" label="GID" width="100" align="center" />
+                <el-table-column prop="gidNumber" label="GID" width="150" align="center" />
                 <el-table-column label="成员数量" width="120" align="center">
                   <template #default="{ row }">
                     <el-tag type="primary" effect="light" class="count-tag">

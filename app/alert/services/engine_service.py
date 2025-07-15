@@ -63,39 +63,54 @@ def alert_engine_job():
     logger.info("告警引擎执行完成")
 
 def process_alert_rule(db: Session, rule: AlertRule):
-    """处理单个告警规则 - 实现智能防重发机制"""
-    logger.debug(f"处理规则: {rule.name} (分组: {rule.category})")
-    
-    # 1. 查询Prometheus数据
+    """处理单个告警规则"""
     try:
-        current_value = query_prometheus(rule.promql)
-        if current_value is None:
-            logger.warning(f"规则 {rule.name} 未获取到数据")
-            # 如果之前是告警状态，且无法获取数据，保持现有状态不变
+        logger.info(f"开始处理告警规则: {rule.name}")
+        logger.info(f"PromQL: {rule.promql}")
+        logger.info(f"告警条件: {rule.condition}")
+        logger.info(f"当前规则状态: {rule.alert_state}")
+        
+        # 查询Prometheus
+        query_result = query_prometheus(rule.promql)
+        if query_result is None:
+            logger.warning(f"规则 {rule.name} 查询无结果")
             return
+        
+        current_value = query_result['value']
+        metric_labels = query_result['labels']
+        current_time = datetime.now()
+        
+        logger.info(f"Prometheus查询结果: 值={current_value}, 标签={metric_labels}")
+        
+        # 检查告警条件
+        is_triggered = check_alert_condition(current_value, rule.condition)
+        logger.info(f"告警条件检查: 值={current_value}, 条件={rule.condition}, 触发={is_triggered}")
+        
+        # 确定告警状态
+        previous_state = rule.alert_state
+        new_state = determine_alert_state(previous_state, is_triggered, rule, current_time)
+        logger.info(f"状态转换: {previous_state} -> {new_state}")
+        
+        # 检查是否需要发送通知
+        should_send = should_send_notification(db, rule, previous_state, new_state, current_time, current_value)
+        logger.info(f"是否需要发送通知: {should_send}")
+        
+        # 更新规则状态
+        update_rule_state(db, rule, new_state, current_time if new_state == 'alerting' else None)
+        
+        # 如果需要发送通知
+        if should_send:
+            logger.info(f"准备发送告警通知: 规则={rule.name}, 值={current_value}")
+            send_alert_and_record(db, rule, current_value, current_time, new_state, metric_labels)
+        else:
+            logger.info(f"不发送通知: 规则={rule.name}, 原因可能是状态未变化或处于静默期")
+        
+        logger.info(f"规则 {rule.name} 处理完成: 值={current_value}, 状态={new_state}, 发送={should_send}")
+        
     except Exception as e:
-        logger.error(f"查询Prometheus失败: {e}")
-        return
-    
-    # 2. 检查是否触发条件
-    is_triggered = check_alert_condition(current_value, rule.condition)
-    current_time = datetime.now()
-    
-    # 3. 状态转换逻辑
-    previous_state = rule.alert_state or 'ok'
-    new_state = determine_alert_state(previous_state, is_triggered, rule, current_time)
-    
-    # 4. 根据状态变化决定是否发送告警
-    should_send_alert = should_send_notification(
-        db, rule, previous_state, new_state, current_time, current_value
-    )
-    
-    if should_send_alert:
-        # 5. 发送告警
-        send_alert_and_record(db, rule, current_value, current_time, new_state)
-    
-    # 6. 更新规则状态
-    update_rule_state(db, rule, new_state, current_time if should_send_alert else None)
+        logger.error(f"处理告警规则 {rule.name} 失败: {e}")
+        import traceback
+        logger.error(f"详细错误信息: {traceback.format_exc()}")
 
 def determine_alert_state(previous_state: str, is_triggered: bool, rule: AlertRule, current_time: datetime) -> str:
     """
@@ -192,7 +207,7 @@ def should_send_notification(db: Session, rule: AlertRule, previous_state: str,
     return False
 
 def send_alert_and_record(db: Session, rule: AlertRule, current_value: float, 
-                         current_time: datetime, alert_state: str):
+                         current_time: datetime, alert_state: str, metric_labels: dict = None):
     """发送告警并记录历史"""
     logger.info(f"规则 {rule.name} 触发告警，当前值: {current_value}, 状态: {alert_state}")
     
@@ -201,6 +216,7 @@ def send_alert_and_record(db: Session, rule: AlertRule, current_value: float,
         logger.warning(f"规则 {rule.name} 未配置通知模板")
         return
     
+    logger.info(f"查找通知模板 ID: {rule.notify_template_id}")
     template = db.query(AlertNotifyTemplate).filter(
         AlertNotifyTemplate.id == rule.notify_template_id
     ).first()
@@ -208,6 +224,19 @@ def send_alert_and_record(db: Session, rule: AlertRule, current_value: float,
     if not template:
         logger.error(f"规则 {rule.name} 的通知模板 {rule.notify_template_id} 不存在")
         return
+    
+    logger.info(f"找到通知模板: {template.name}, 类型: {template.type}")
+    
+    # 合并规则标签和指标标签
+    rule_labels = rule.labels or {}
+    metric_labels = metric_labels or {}
+    
+    # 指标标签优先级高于规则标签
+    merged_labels = {**rule_labels, **metric_labels}
+    
+    logger.info(f"规则标签: {rule_labels}")
+    logger.info(f"指标标签: {metric_labels}")
+    logger.info(f"合并后标签: {merged_labels}")
     
     # 构建告警上下文
     alert_context = {
@@ -220,15 +249,25 @@ def send_alert_and_record(db: Session, rule: AlertRule, current_value: float,
         'message': f"[{rule.category.upper()}] {rule.name} 触发告警，当前值 {current_value} {rule.condition}",
         'promql': rule.promql,
         'description': rule.description or '',
-        'labels': rule.labels or {},
+        'labels': merged_labels,
         'alert_state': alert_state
     }
     
+    # 将指标标签作为单独的变量添加到上下文中，方便模板使用
+    for key, value in metric_labels.items():
+        alert_context[key] = str(value)
+    
+    logger.info(f"告警上下文: {alert_context}")
+    
     # 发送通知
+    logger.info(f"开始发送告警通知...")
     send_result = send_alert_notification(template, alert_context)
+    logger.info(f"告警发送结果: {send_result}")
     
     # 记录历史
+    logger.info(f"开始记录告警历史...")
     create_alert_history(db, rule, alert_context, send_result, current_value)
+    logger.info(f"告警历史记录完成")
 
 def update_rule_state(db: Session, rule: AlertRule, new_state: str, alert_time: Optional[datetime]):
     """更新规则状态"""
@@ -286,8 +325,8 @@ def parse_time_duration(duration_str: str) -> Optional[timedelta]:
         logger.error(f"无法解析时间间隔: {duration_str}")
         return None
 
-def query_prometheus(promql: str) -> Optional[float]:
-    """查询Prometheus数据"""
+def query_prometheus(promql: str) -> Optional[dict]:
+    """查询Prometheus数据，返回包含值和标签的完整结果"""
     try:
         url = f"{PROMETHEUS_URL}/api/v1/query"
         params = {'query': promql}
@@ -306,9 +345,13 @@ def query_prometheus(promql: str) -> Optional[float]:
             logger.warning(f"Prometheus查询无结果: {promql}")
             return None
         
-        # 取第一个结果的值
-        value = float(result[0]['value'][1])
-        return value
+        # 返回第一个结果的完整信息
+        first_result = result[0]
+        return {
+            'value': float(first_result['value'][1]),
+            'labels': first_result.get('metric', {}),
+            'timestamp': first_result['value'][0]
+        }
         
     except Exception as e:
         logger.error(f"查询Prometheus异常: {e}")
@@ -317,7 +360,7 @@ def query_prometheus(promql: str) -> Optional[float]:
 def check_alert_condition(value: float, condition: str) -> bool:
     """检查告警条件是否满足"""
     try:
-        # 解析条件，如 "> 80", "< 0.5", "== 100"
+        # 解析条件，如 "> 80", "< 0.5", "== 100", "= 0"
         condition = condition.strip()
         
         if condition.startswith('>='):
@@ -335,6 +378,9 @@ def check_alert_condition(value: float, condition: str) -> bool:
         elif condition.startswith('=='):
             threshold = float(condition[2:].strip())
             return value == threshold
+        elif condition.startswith('='):
+            threshold = float(condition[1:].strip())
+            return value == threshold
         elif condition.startswith('!='):
             threshold = float(condition[2:].strip())
             return value != threshold
@@ -349,28 +395,46 @@ def check_alert_condition(value: float, condition: str) -> bool:
 def send_alert_notification(template: AlertNotifyTemplate, alert_context: dict) -> dict:
     """发送告警通知"""
     try:
+        logger.info(f"开始发送 {template.type} 类型告警通知")
+        logger.info(f"模板参数: {template.params}")
+        
         template_params = json.loads(template.params) if isinstance(template.params, str) else template.params
+        logger.info(f"解析后的模板参数: {template_params}")
         
         if template.type == 'email':
+            logger.info("处理邮件告警通知")
             # 渲染邮件模板
             subject, content = render_email_template(template_params, alert_context)
+            logger.info(f"邮件主题: {subject}")
+            logger.info(f"邮件内容: {content}")
             
             # 准备邮件参数
             email_params = template_params.copy()
             email_params['subject'] = subject
             email_params['content'] = content
             
-            return send_email_msg(email_params)
+            logger.info(f"邮件发送参数: {email_params}")
+            result = send_email_msg(email_params)
+            logger.info(f"邮件发送结果: {result}")
+            return result
             
         elif template.type == 'http':
+            logger.info("处理HTTP告警通知")
             # 渲染HTTP模板
             http_params = render_http_template(template_params, alert_context)
-            return send_http_msg(http_params)
+            logger.info(f"HTTP发送参数: {http_params}")
+            result = send_http_msg(http_params)
+            logger.info(f"HTTP发送结果: {result}")
+            return result
             
         elif template.type == 'lechat':
+            logger.info("处理乐聊告警通知")
             # 渲染乐聊模板
             lechat_params = render_lechat_template(template_params, alert_context)
-            return send_lechat_msg(lechat_params)
+            logger.info(f"乐聊发送参数: {lechat_params}")
+            result = send_lechat_msg(lechat_params)
+            logger.info(f"乐聊发送结果: {result}")
+            return result
             
         else:
             logger.error(f"不支持的通知类型: {template.type}")
@@ -378,6 +442,8 @@ def send_alert_notification(template: AlertNotifyTemplate, alert_context: dict) 
             
     except Exception as e:
         logger.error(f"发送告警通知失败: {e}")
+        import traceback
+        logger.error(f"详细错误信息: {traceback.format_exc()}")
         return {"success": False, "msg": str(e)}
 
 def create_alert_history(db: Session, rule: AlertRule, alert_context: dict, 

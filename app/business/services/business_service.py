@@ -13,7 +13,7 @@ class BusinessService:
             "cdh": {
                 "name": "CDH集群",
                 "type": "cdh",
-                "schedulers": ["azkaban"],
+                "schedulers": ["azkaban", "dolphinscheduler"],
                 "azkaban_config": {
                     "host": settings.azkaban_host,
                     "port": settings.azkaban_port,
@@ -25,6 +25,14 @@ class BusinessService:
                     "db_database": settings.azkaban_db_database,
                     "db_username": settings.azkaban_db_username,
                     "db_password": settings.azkaban_db_password
+                },
+                "ds_config": {
+                    "host": settings.cdh_ds_host,
+                    "port": settings.cdh_ds_port,
+                    "database": settings.cdh_ds_database,
+                    "username": settings.cdh_ds_username,
+                    "password": settings.cdh_ds_password,
+                    "web_url": settings.cdh_ds_web_url
                 }
             },
             "apache": {
@@ -74,12 +82,15 @@ class BusinessService:
         try:
             # 根据集群类型获取数据
             if cluster_name == "cdh":
-                # CDH集群：查询Azkaban
+                # CDH集群：查询Azkaban和DolphinScheduler
                 azkaban_stats = await self._get_azkaban_stats(cluster_config["azkaban_config"], start_date, end_date)
+                ds_stats = await self._get_dolphinscheduler_stats(cluster_config["ds_config"], start_date, end_date)
+                
                 overview["schedulers_stats"]["azkaban"] = azkaban_stats
-                overview["total_jobs"] = azkaban_stats["total_jobs"]
-                overview["success_jobs"] = azkaban_stats["success_jobs"]
-                overview["failed_jobs"] = azkaban_stats["failed_jobs"]
+                overview["schedulers_stats"]["dolphinscheduler"] = ds_stats
+                overview["total_jobs"] = azkaban_stats["total_jobs"] + ds_stats["total_jobs"]
+                overview["success_jobs"] = azkaban_stats["success_jobs"] + ds_stats["success_jobs"]
+                overview["failed_jobs"] = azkaban_stats["failed_jobs"] + ds_stats["failed_jobs"]
                 
             elif cluster_name == "apache":
                 # Apache集群：查询DolphinScheduler
@@ -109,8 +120,10 @@ class BusinessService:
 
         try:
             if cluster_name == "cdh":
-                # CDH集群：查询Azkaban失败任务
-                failed_jobs = await self._get_azkaban_failed_jobs(cluster_config["azkaban_config"], start_date, end_date)
+                # CDH集群：查询Azkaban和DolphinScheduler失败任务
+                azkaban_failed = await self._get_azkaban_failed_jobs(cluster_config["azkaban_config"], start_date, end_date)
+                ds_failed = await self._get_dolphinscheduler_failed_jobs(cluster_config["ds_config"], start_date, end_date)
+                failed_jobs = azkaban_failed + ds_failed
                 
             elif cluster_name == "apache":
                 # Apache集群：查询DolphinScheduler失败任务
@@ -144,8 +157,10 @@ class BusinessService:
 
         try:
             if cluster_name == "cdh":
-                # CDH集群：查询Azkaban任务
-                top_jobs = await self._get_azkaban_duration_jobs(cluster_config["azkaban_config"], start_date, end_date)
+                # CDH集群：查询Azkaban和DolphinScheduler任务
+                azkaban_jobs = await self._get_azkaban_duration_jobs(cluster_config["azkaban_config"], start_date, end_date)
+                ds_jobs = await self._get_dolphinscheduler_duration_jobs(cluster_config["ds_config"], start_date, end_date)
+                top_jobs = azkaban_jobs + ds_jobs
                 
             elif cluster_name == "apache":
                 # Apache集群：查询DolphinScheduler任务
@@ -237,8 +252,8 @@ class BusinessService:
             
             # 转换日期为时间戳（毫秒）
             try:
-                start_timestamp = int(datetime.strptime(f"{start_date} 00:00:00", "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
-                end_timestamp = int(datetime.strptime(f"{end_date} 23:59:59", "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
+                start_timestamp = int(datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
+                end_timestamp = int(datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
             except Exception as date_error:
                 logger.error(f"Azkaban日期转换失败: {date_error}")
                 connection.close()
@@ -289,12 +304,11 @@ class BusinessService:
             WHERE ef.status IN (60, 70, 80)  -- FAILED, KILLED, CANCELLED
             AND ef.start_time >= %s AND ef.start_time <= %s
             ORDER BY ef.start_time DESC
-            LIMIT 200
             """
             
             # 转换日期为时间戳
-            start_timestamp = int(datetime.strptime(f"{start_date} 00:00:00", "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
-            end_timestamp = int(datetime.strptime(f"{end_date} 23:59:59", "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
+            start_timestamp = int(datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
+            end_timestamp = int(datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
             
             async with connection.cursor() as cursor:
                 await cursor.execute(query, (start_timestamp, end_timestamp))
@@ -365,8 +379,8 @@ class BusinessService:
             """
             
             # 转换日期为时间戳
-            start_timestamp = int(datetime.strptime(f"{start_date} 00:00:00", "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
-            end_timestamp = int(datetime.strptime(f"{end_date} 23:59:59", "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
+            start_timestamp = int(datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
+            end_timestamp = int(datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
             
             async with connection.cursor() as cursor:
                 await cursor.execute(query, (start_timestamp, end_timestamp))
@@ -420,7 +434,7 @@ class BusinessService:
                 SUM(CASE WHEN state = 7 THEN 1 ELSE 0 END) as success_jobs,
                 SUM(CASE WHEN state IN (6, 9, 10) THEN 1 ELSE 0 END) as failed_jobs
             FROM t_ds_process_instance 
-            WHERE DATE(start_time) >= %s AND DATE(start_time) <= %s
+            WHERE start_time >= %s AND start_time <= %s
             """
             
             async with connection.cursor() as cursor:
@@ -464,9 +478,8 @@ class BusinessService:
                 pi.state
             FROM t_ds_process_instance pi
             WHERE pi.state IN (6, 9, 10)  -- FAILURE, KILL, STOP
-            AND DATE(pi.start_time) >= %s AND DATE(pi.start_time) <= %s
+            AND pi.start_time >= %s AND pi.start_time <= %s
             ORDER BY pi.start_time DESC
-            LIMIT 200
             """
             
             async with connection.cursor() as cursor:
@@ -529,7 +542,7 @@ class BusinessService:
                 TIMESTAMPDIFF(SECOND, pi.start_time, pi.end_time) as duration_seconds
             FROM t_ds_process_instance pi
             WHERE pi.state = 7  -- SUCCESS
-            AND DATE(pi.start_time) >= %s AND DATE(pi.start_time) <= %s
+            AND pi.start_time >= %s AND pi.start_time <= %s
             AND pi.end_time IS NOT NULL
             AND pi.start_time IS NOT NULL
             AND pi.end_time > pi.start_time
@@ -578,13 +591,18 @@ class BusinessService:
             cluster_config = self.clusters_config.get(cluster_name)
             daily_stats = []
             
-            # 生成日期范围
-            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-            current_date = start_dt
+            # 生成日期范围（按小时生成，支持时分秒查询）
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S")
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S")
             
-            while current_date <= end_dt:
+            # 按天分组统计
+            current_date = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_date_day = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+            
+            while current_date <= end_date_day:
                 date_str = current_date.strftime("%Y-%m-%d")
+                day_start = current_date.strftime("%Y-%m-%d %H:%M:%S")
+                day_end = (current_date + timedelta(days=1) - timedelta(microseconds=1)).strftime("%Y-%m-%d %H:%M:%S")
                 
                 total_jobs = 0
                 success_jobs = 0
@@ -592,15 +610,16 @@ class BusinessService:
                 
                 # 获取当日数据
                 if cluster_name == "cdh":
-                    # CDH集群：查询Azkaban
-                    azkaban_stats = await self._get_azkaban_stats(cluster_config["azkaban_config"], date_str, date_str)
-                    total_jobs = azkaban_stats["total_jobs"]
-                    success_jobs = azkaban_stats["success_jobs"]
-                    failed_jobs = azkaban_stats["failed_jobs"]
+                    # CDH集群：查询Azkaban和DolphinScheduler
+                    azkaban_stats = await self._get_azkaban_stats(cluster_config["azkaban_config"], day_start, day_end)
+                    ds_stats = await self._get_dolphinscheduler_stats(cluster_config["ds_config"], day_start, day_end)
+                    total_jobs = azkaban_stats["total_jobs"] + ds_stats["total_jobs"]
+                    success_jobs = azkaban_stats["success_jobs"] + ds_stats["success_jobs"]
+                    failed_jobs = azkaban_stats["failed_jobs"] + ds_stats["failed_jobs"]
                     
                 elif cluster_name == "apache":
                     # Apache集群：查询DolphinScheduler
-                    ds_stats = await self._get_dolphinscheduler_stats(cluster_config["ds_config"], date_str, date_str)
+                    ds_stats = await self._get_dolphinscheduler_stats(cluster_config["ds_config"], day_start, day_end)
                     total_jobs = ds_stats["total_jobs"]
                     success_jobs = ds_stats["success_jobs"]
                     failed_jobs = ds_stats["failed_jobs"]
@@ -629,18 +648,28 @@ class BusinessService:
             cluster_config = self.clusters_config.get(cluster_name)
             
             if cluster_name == "cdh":
-                # CDH集群：查询Azkaban
+                # CDH集群：查询Azkaban和DolphinScheduler
                 azkaban_stats = await self._get_azkaban_stats(cluster_config["azkaban_config"], start_date, end_date)
+                ds_stats = await self._get_dolphinscheduler_stats(cluster_config["ds_config"], start_date, end_date)
                 
-                if azkaban_stats["total_jobs"] > 0:
-                    return [
-                        {
+                total_jobs = azkaban_stats["total_jobs"] + ds_stats["total_jobs"]
+                if total_jobs > 0:
+                    distribution = []
+                    if azkaban_stats["total_jobs"] > 0:
+                        distribution.append({
                             "scheduler": "azkaban",
                             "scheduler_name": "Azkaban",
                             "job_count": azkaban_stats["total_jobs"],
-                            "percentage": 100.0
-                        }
-                    ]
+                            "percentage": round((azkaban_stats["total_jobs"] / total_jobs) * 100, 2)
+                        })
+                    if ds_stats["total_jobs"] > 0:
+                        distribution.append({
+                            "scheduler": "dolphinscheduler",
+                            "scheduler_name": "DolphinScheduler",
+                            "job_count": ds_stats["total_jobs"],
+                            "percentage": round((ds_stats["total_jobs"] / total_jobs) * 100, 2)
+                        })
+                    return distribution
                     
             elif cluster_name == "apache":
                 # Apache集群：查询DolphinScheduler
@@ -672,9 +701,11 @@ class BusinessService:
             distribution = []
             
             if cluster_name == "cdh":
-                # CDH集群：获取Azkaban项目分布
+                # CDH集群：获取Azkaban和DolphinScheduler项目分布
                 azkaban_distribution = await self._get_azkaban_project_distribution(cluster_config["azkaban_config"], start_date, end_date)
+                ds_distribution = await self._get_ds_project_distribution(cluster_config["ds_config"], start_date, end_date)
                 distribution.extend(azkaban_distribution)
+                distribution.extend(ds_distribution)
                 
             elif cluster_name == "apache":
                 # Apache集群：获取DolphinScheduler项目分布
@@ -709,8 +740,8 @@ class BusinessService:
             """
             
             # 转换日期为时间戳
-            start_timestamp = int(datetime.strptime(f"{start_date} 00:00:00", "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
-            end_timestamp = int(datetime.strptime(f"{end_date} 23:59:59", "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
+            start_timestamp = int(datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
+            end_timestamp = int(datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
             
             async with connection.cursor() as cursor:
                 await cursor.execute(query, (start_timestamp, end_timestamp))
@@ -749,7 +780,7 @@ class BusinessService:
                 SUM(CASE WHEN pi.state = 7 THEN 1 ELSE 0 END) as success_jobs,
                 SUM(CASE WHEN pi.state IN (6, 9, 10) THEN 1 ELSE 0 END) as failed_jobs
             FROM t_ds_process_instance pi
-            WHERE DATE(pi.start_time) >= %s AND DATE(pi.start_time) <= %s
+            WHERE pi.start_time >= %s AND pi.start_time <= %s
             """
             
             async with connection.cursor() as cursor:

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, case
 from typing import Optional, List
 from datetime import datetime, timedelta
+from pydantic import BaseModel
 from app.models import SessionLocal, AlertHistory
 from app.models.alert_schemas import CommonResponse
 from app.utils.logger import logger
@@ -15,6 +16,10 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# 解决告警请求模型
+class ResolveAlertRequest(BaseModel):
+    reason: Optional[str] = None
 
 @router.get("/alert/history", response_model=CommonResponse[dict])
 def get_alert_history(
@@ -84,7 +89,11 @@ def get_alert_history(
                 "notified": history.notified,
                 "notified_at": history.notified_at.isoformat() if history.notified_at else None,
                 "resolved_at": history.resolved_at.isoformat() if history.resolved_at else None,
-                "created_at": history.created_at.isoformat()
+                "fired_at": history.created_at.isoformat(),  # 添加fired_at字段
+                "created_at": history.created_at.isoformat(),
+                "acknowledged": history.acknowledged,  # 添加确认状态字段
+                "acknowledged_at": history.acknowledged_at.isoformat() if history.acknowledged_at else None,
+                "acknowledged_by": history.acknowledged_by
             }
             history_list.append(history_dict)
         
@@ -334,3 +343,52 @@ def acknowledge_rule_alert(
         logger.error(f"确认规则告警失败: {e}")
         db.rollback()
         return {"code": 1, "data": None, "msg": f"确认失败: {str(e)}"} 
+
+@router.post("/alert/history/{history_id}/resolve", response_model=CommonResponse[dict])
+def resolve_alert(
+    history_id: int,
+    request: ResolveAlertRequest,
+    db: Session = Depends(get_db)
+):
+    """手动解决告警"""
+    try:
+        # 查找告警历史记录
+        history = db.query(AlertHistory).filter(AlertHistory.id == history_id).first()
+        if not history:
+            return {"code": 1, "data": None, "msg": "告警历史记录不存在"}
+        
+        # 检查告警状态
+        if history.status == 'recovered':
+            return {"code": 1, "data": None, "msg": "告警已经解决"}
+        
+        # 更新告警状态为已解决
+        history.status = 'recovered'
+        history.resolved_at = datetime.now()
+        
+        # 如果有解决原因，可以存储到message字段或新增字段
+        if request.reason:
+            history.message = f"{history.message}\n\n解决原因: {request.reason}"
+        
+        # 将对应的告警规则状态设置为正常
+        from app.models import AlertRule
+        rule = db.query(AlertRule).filter(AlertRule.id == history.rule_id).first()
+        if rule and rule.alert_state == 'alerting':
+            rule.alert_state = 'ok'
+            logger.info(f"告警规则 {rule.name} 已被手动解决，状态设为正常")
+        
+        db.commit()
+        
+        return {
+            "code": 0,
+            "data": {
+                "history_id": history_id,
+                "resolved_at": history.resolved_at.isoformat(),
+                "reason": request.reason
+            },
+            "msg": "告警已解决"
+        }
+        
+    except Exception as e:
+        logger.error(f"解决告警失败: {e}")
+        db.rollback()
+        return {"code": 1, "data": None, "msg": f"解决失败: {str(e)}"} 

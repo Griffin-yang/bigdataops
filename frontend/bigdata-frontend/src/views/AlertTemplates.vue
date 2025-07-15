@@ -197,28 +197,69 @@
               />
             </el-form-item>
             
-            <el-form-item label="邮件内容" prop="content_template">
-              <el-input 
-                v-model="emailConfig.content_template" 
-                type="textarea" 
-                :rows="6"
-                placeholder="支持HTML格式和变量，如: &lt;h2&gt;告警详情&lt;/h2&gt;&lt;p&gt;规则: {rule_name}&lt;/p&gt;"
-                show-word-limit
-                maxlength="2000"
-              />
+            <el-form-item label="邮件内容参数" prop="email_params">
+              <div class="params-selector">
+                <div class="params-section">
+                  <h4>基础信息</h4>
+                  <el-checkbox-group v-model="selectedEmailParams" @change="updateEmailTemplate">
+                    <el-checkbox label="rule_name">规则名称</el-checkbox>
+                    <el-checkbox label="level">告警等级</el-checkbox>
+                    <el-checkbox label="category">组件分组</el-checkbox>
+                    <el-checkbox label="condition">触发条件</el-checkbox>
+                    <el-checkbox label="current_value">当前值</el-checkbox>
+                    <el-checkbox label="trigger_time">触发时间</el-checkbox>
+                    <el-checkbox label="promql">PromQL查询</el-checkbox>
+                    <el-checkbox label="description">规则描述</el-checkbox>
+                  </el-checkbox-group>
+                </div>
+                
+                <div class="params-section">
+                  <h4>指标标签</h4>
+                  <el-checkbox-group v-model="selectedEmailParams" @change="updateEmailTemplate">
+                    <el-checkbox label="name">主机名称</el-checkbox>
+                    <el-checkbox label="port">端口号</el-checkbox>
+                    <el-checkbox label="instance">实例地址</el-checkbox>
+                    <el-checkbox label="job">服务名称</el-checkbox>
+                    <el-checkbox label="service">服务类型</el-checkbox>
+                    <el-checkbox label="group">分组</el-checkbox>
+                    <el-checkbox label="role">角色</el-checkbox>
+                  </el-checkbox-group>
+                </div>
+                
+                <div class="params-section">
+                  <h4>自定义标签</h4>
+                  <div class="custom-labels">
+                    <el-input 
+                      v-model="customLabelKey" 
+                      placeholder="标签名" 
+                      style="width: 120px; margin-right: 8px;"
+                    />
+                    <el-input 
+                      v-model="customLabelValue" 
+                      placeholder="标签值" 
+                      style="width: 120px; margin-right: 8px;"
+                    />
+                    <el-button @click="addCustomLabel" size="small">添加</el-button>
+                  </div>
+                  <div class="custom-labels-list">
+                    <el-tag 
+                      v-for="(value, key) in customLabels" 
+                      :key="key"
+                      closable
+                      @close="removeCustomLabel(key)"
+                      style="margin: 4px;"
+                    >
+                      {{ key }}: {{ value }}
+                    </el-tag>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="template-preview">
+                <h4>模板预览</h4>
+                <div class="preview-content" v-html="emailTemplatePreview"></div>
+              </div>
             </el-form-item>
-            
-            <div class="variable-help">
-              <div class="help-title">
-                <el-icon><InfoFilled /></el-icon>
-                <span>支持的变量</span>
-              </div>
-              <div class="variable-tags">
-                <el-tag size="small" v-for="variable in emailVariables" :key="variable">
-                  {{ variable }}
-                </el-tag>
-              </div>
-            </div>
           </div>
         </template>
 
@@ -549,10 +590,16 @@ const emailConfig = ref({
   password: '',
   ssl: true,
   subject_template: '【{level}】{rule_name} 告警通知',
-  content_template: '<h2>告警详情</h2><p>规则: {rule_name}</p><p>等级: {level}</p><p>当前值: {current_value}</p>'
+  content_template: '<h2>告警详情</h2><p>规则: {rule_name}</p><p>等级: {level}</p><p>当前值: {current_value}</p><p>主机: {name}</p><p>端口: {port}</p>'
 })
 
 const toEmails = ref('')
+
+// 邮件参数选择器
+const selectedEmailParams = ref<string[]>(['rule_name', 'level', 'current_value', 'name', 'port'])
+const customLabels = ref<Record<string, string>>({})
+const customLabelKey = ref('')
+const customLabelValue = ref('')
 
 // HTTP配置
 const httpConfig = ref({
@@ -587,26 +634,108 @@ const templateRules = {
 
 // 变量列表
 const emailVariables = [
-  '{rule_name}', '{level}', '{current_value}', '{threshold}', 
-  '{fired_at}', '{description}', '{labels}'
+  '{rule_name}', '{level}', '{current_value}', '{condition}', 
+  '{trigger_time}', '{description}', '{labels}',
+  '{name}', '{port}', '{instance}', '{job}', '{service}'
 ]
 
 const httpVariables = [
-  '{rule_name}', '{level}', '{current_value}', '{threshold}', 
-  '{fired_at}', '{description}', '{labels}'
+  '{rule_name}', '{level}', '{current_value}', '{condition}', 
+  '{trigger_time}', '{description}', '{labels}',
+  '{name}', '{port}', '{instance}', '{job}', '{service}'
 ]
 
 const lechatVariables = [
-  '{rule_name}', '{level}', '{current_value}', '{threshold}', 
-  '{trigger_time}', '{description}', '{labels}'
+  '{rule_name}', '{level}', '{current_value}', '{condition}', 
+  '{trigger_time}', '{description}', '{labels}',
+  '{name}', '{port}', '{instance}', '{job}', '{service}'
 ]
 
 // 计算属性
 const dialogTitle = computed(() => isEdit.value ? '编辑告警模板' : '新增告警模板')
 
+// 邮件模板预览
+const emailTemplatePreview = computed(() => {
+  const params = selectedEmailParams.value
+  const customLabelsList = Object.entries(customLabels.value).map(([key, value]) => `${key}: ${value}`).join(', ')
+  
+  let preview = '<div style="border: 1px solid #ddd; padding: 15px; border-radius: 4px; background: #f9f9f9;">'
+  preview += '<h3 style="color: #e74c3c; margin-top: 0;">🚨 告警通知</h3>'
+  
+  if (params.includes('rule_name')) preview += '<p><strong>规则名称:</strong> {rule_name}</p>'
+  if (params.includes('level')) preview += '<p><strong>告警等级:</strong> {level}</p>'
+  if (params.includes('category')) preview += '<p><strong>组件分组:</strong> {category}</p>'
+  if (params.includes('condition')) preview += '<p><strong>触发条件:</strong> {condition}</p>'
+  if (params.includes('current_value')) preview += '<p><strong>当前值:</strong> {current_value}</p>'
+  if (params.includes('trigger_time')) preview += '<p><strong>触发时间:</strong> {trigger_time}</p>'
+  if (params.includes('promql')) preview += '<p><strong>PromQL查询:</strong> {promql}</p>'
+  if (params.includes('description')) preview += '<p><strong>规则描述:</strong> {description}</p>'
+  
+  if (params.includes('name')) preview += '<p><strong>主机名称:</strong> {name}</p>'
+  if (params.includes('port')) preview += '<p><strong>端口号:</strong> {port}</p>'
+  if (params.includes('instance')) preview += '<p><strong>实例地址:</strong> {instance}</p>'
+  if (params.includes('job')) preview += '<p><strong>服务名称:</strong> {job}</p>'
+  if (params.includes('service')) preview += '<p><strong>服务类型:</strong> {service}</p>'
+  if (params.includes('group')) preview += '<p><strong>分组:</strong> {group}</p>'
+  if (params.includes('role')) preview += '<p><strong>角色:</strong> {role}</p>'
+  
+  if (customLabelsList) {
+    preview += '<p><strong>自定义标签:</strong> ' + customLabelsList + '</p>'
+  }
+  
+  preview += '</div>'
+  return preview
+})
+
 // 方法
 const formatTime = (time: string) => {
   return new Date(time).toLocaleString()
+}
+
+// 邮件参数选择器方法
+const updateEmailTemplate = () => {
+  // 更新邮件配置中的内容模板
+  const params = selectedEmailParams.value
+  const customLabelsList = Object.entries(customLabels.value).map(([key, value]) => `${key}: {${key}}`).join(', ')
+  
+  let template = '<h2>🚨 告警通知</h2>'
+  
+  if (params.includes('rule_name')) template += '<p><strong>规则名称:</strong> {rule_name}</p>'
+  if (params.includes('level')) template += '<p><strong>告警等级:</strong> {level}</p>'
+  if (params.includes('category')) template += '<p><strong>组件分组:</strong> {category}</p>'
+  if (params.includes('condition')) template += '<p><strong>触发条件:</strong> {condition}</p>'
+  if (params.includes('current_value')) template += '<p><strong>当前值:</strong> {current_value}</p>'
+  if (params.includes('trigger_time')) template += '<p><strong>触发时间:</strong> {trigger_time}</p>'
+  if (params.includes('promql')) template += '<p><strong>PromQL查询:</strong> {promql}</p>'
+  if (params.includes('description')) template += '<p><strong>规则描述:</strong> {description}</p>'
+  
+  if (params.includes('name')) template += '<p><strong>主机名称:</strong> {name}</p>'
+  if (params.includes('port')) template += '<p><strong>端口号:</strong> {port}</p>'
+  if (params.includes('instance')) template += '<p><strong>实例地址:</strong> {instance}</p>'
+  if (params.includes('job')) template += '<p><strong>服务名称:</strong> {job}</p>'
+  if (params.includes('service')) template += '<p><strong>服务类型:</strong> {service}</p>'
+  if (params.includes('group')) template += '<p><strong>分组:</strong> {group}</p>'
+  if (params.includes('role')) template += '<p><strong>角色:</strong> {role}</p>'
+  
+  if (customLabelsList) {
+    template += '<p><strong>自定义标签:</strong> ' + customLabelsList + '</p>'
+  }
+  
+  emailConfig.value.content_template = template
+}
+
+const addCustomLabel = () => {
+  if (customLabelKey.value && customLabelValue.value) {
+    customLabels.value[customLabelKey.value] = customLabelValue.value
+    customLabelKey.value = ''
+    customLabelValue.value = ''
+    updateEmailTemplate()
+  }
+}
+
+const removeCustomLabel = (key: string) => {
+  delete customLabels.value[key]
+  updateEmailTemplate()
 }
 
 const getTypeLabel = (type: string) => {
@@ -684,6 +813,14 @@ const editTemplate = (template: AlertNotifyTemplate) => {
     if (template.type === 'email') {
       emailConfig.value = { ...emailConfig.value, ...params }
       toEmails.value = params.to?.join(', ') || ''
+      // 恢复邮件参数选择
+      if (params.email_params) {
+        selectedEmailParams.value = params.email_params
+      }
+      if (params.custom_labels) {
+        customLabels.value = params.custom_labels
+      }
+      updateEmailTemplate()
     } else if (template.type === 'http') {
       httpConfig.value = { ...httpConfig.value, ...params }
       httpHeaders.value = JSON.stringify(params.headers || {}, null, 2)
@@ -744,7 +881,7 @@ const resetForm = () => {
     password: '',
     ssl: true,
     subject_template: '【{level}】{rule_name} 告警通知',
-    content_template: '<h2>告警详情</h2><p>规则: {rule_name}</p><p>等级: {level}</p><p>当前值: {current_value}</p>'
+    content_template: '<h2>告警详情</h2><p>规则: {rule_name}</p><p>等级: {level}</p><p>当前值: {current_value}</p><p>主机: {name}</p><p>端口: {port}</p>'
   }
   
   toEmails.value = ''
@@ -766,7 +903,7 @@ const resetForm = () => {
     groupId: '',
     userIds: '',
     ext: '{"group":"oa"}',
-    body_template: '{"robot":{"type":"robotAnswer"},"type":"multi","msgs":[{"text":"🚨 【{level}】告警通知\\n规则: {rule_name}\\n当前值: {current_value}\\n时间: {trigger_time}","type":"text"}]}',
+    body_template: '{"robot":{"type":"robotAnswer"},"type":"multi","msgs":[{"text":"🚨 【{level}】告警通知\\n规则: {rule_name}\\n当前值: {current_value}\\n主机: {name}\\n端口: {port}\\n时间: {trigger_time}","type":"text"}]}',
     pushcontent: '',
     option: '{"push":true}',
     userMapping: '{}'
@@ -791,7 +928,9 @@ const saveTemplate = async () => {
       params = {
         ...emailConfig.value,
         to: toEmails.value.split(',').map(email => email.trim()).filter(email => email),
-        require_auth: !!(emailConfig.value.user && emailConfig.value.password)
+        require_auth: !!(emailConfig.value.user && emailConfig.value.password),
+        email_params: selectedEmailParams.value,
+        custom_labels: customLabels.value
       }
     } else if (templateForm.value.type === 'http') {
       if (!httpConfig.value.url) {
@@ -1269,5 +1408,69 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   font-weight: 500;
+}
+
+/* 邮件参数选择器样式 */
+.params-selector {
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 16px;
+  background: #fafafa;
+}
+
+.params-section {
+  margin-bottom: 20px;
+}
+
+.params-section h4 {
+  margin: 0 0 12px 0;
+  color: #303133;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.params-section:last-child {
+  margin-bottom: 0;
+}
+
+.custom-labels {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.custom-labels-list {
+  min-height: 32px;
+  padding: 4px;
+  border: 1px dashed #d9d9d9;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.template-preview {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.template-preview h4 {
+  margin: 0 0 8px 0;
+  color: #606266;
+  font-size: 13px;
+}
+
+.preview-content {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.preview-content p {
+  margin: 4px 0;
+}
+
+.preview-content strong {
+  color: #303133;
 }
 </style> 
