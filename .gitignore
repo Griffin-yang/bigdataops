@@ -1,0 +1,3 @@
+# 忽略实际配置文件，只上传模板
+config/config.env 
+config/config_prod.env

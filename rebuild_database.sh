@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 # 数据库配置（请根据实际情况修改）
 DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-3306}"
-DB_NAME="${DB_NAME:-alert}"
+DB_NAME="${DB_NAME:-bigdataops}"
 DB_USER="${DB_USER:-root}"
 
 echo -e "${BLUE}======================================================${NC}"
@@ -76,7 +76,7 @@ fi
 
 # 执行建表脚本
 echo -e "\n${BLUE}执行建表脚本...${NC}"
-if $MYSQL_CMD < docs/tables_v2.sql; then
+if $MYSQL_CMD < docs/database_schema.sql; then
     echo -e "${GREEN}✅ 表结构创建成功${NC}"
 else
     echo -e "${RED}❌ 表结构创建失败${NC}"

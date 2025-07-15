@@ -8,7 +8,6 @@
 DROP TABLE IF EXISTS `alert_history`;
 DROP TABLE IF EXISTS `alert_rule`;
 DROP TABLE IF EXISTS `alert_notify_template`;
-
 -- ======================================================
 -- 告警通知模板表
 -- ======================================================
